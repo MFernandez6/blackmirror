@@ -1,0 +1,791 @@
+// BLACKBOX / BLACKMIRROR — Claims Management + Field Inspection
+// Blackline Public Adjusters LLC (internal ops)
+//
+// Do not hard-delete Claims with related records — archive via Claim.isArchived.
+// Every status mutation must write StatusHistory in the same transaction
+// (enforced in application layer).
+//
+// BLACKMIRROR adds Property, Inspection, InspectionItem, Photo.
+// Auth principal is Adjuster (ADMIN / ADJUSTER / VIEWER) — there is no
+// separate User table.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  /// Pooled connection (Transaction mode) — used by the app at runtime
+  url       = env("DATABASE_URL")
+  /// Direct connection — required for Prisma migrations against Supabase
+  directUrl = env("DIRECT_URL")
+}
+
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ClaimStatus {
+  INTAKE
+  UNDER_REVIEW
+  INVESTIGATION
+  FILED
+  NEGOTIATING
+  SETTLED
+  CLOSED
+  DENIED
+}
+
+enum LossType {
+  WIND
+  FIRE
+  WATER
+  HAIL
+  VANDALISM
+  OTHER
+}
+
+enum PreferredContactMethod {
+  EMAIL
+  PHONE
+  TEXT
+}
+
+enum AdjusterRole {
+  ADMIN
+  ADJUSTER
+  VIEWER
+}
+
+enum DocType {
+  POLICY
+  ESTIMATE
+  PHOTO
+  CORRESPONDENCE
+  ENGINEERING_REPORT
+  DEMAND_LETTER
+  INSPECTION_REPORT
+  OTHER
+}
+
+enum InspectionStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum InspectionCategory {
+  WATER
+  STRUCTURAL
+  ROOF
+  INTERIOR
+  MECHANICAL
+  EXTERIOR
+  MOLD
+  OTHER_STRUCTURES
+  CONTENTS
+  ALE
+  ADDITIONAL
+  CAUSATION
+}
+
+enum Severity {
+  MINOR
+  MODERATE
+  SEVERE
+  CRITICAL
+}
+
+enum Confidence {
+  CONFIRMED
+  SUSPECTED
+}
+
+enum Presence {
+  UNSET
+  PRESENT
+  NOT_PRESENT
+}
+
+enum InspectionReason {
+  INITIAL_INSPECTION
+  REINSPECTION
+  ENGINEER_EXPERT_INSPECTION
+  SUPPLEMENTAL_INSPECTION
+  APPRAISAL_INSPECTION
+  MITIGATION_WALKTHROUGH
+  CUSTOM
+}
+
+enum PhotoSyncStatus {
+  PENDING
+  ANALYZED
+  SYNCED
+}
+
+/// Reserved for future AI extraction pipeline. Unused in this phase.
+enum ExtractionStatus {
+  PENDING
+  COMPLETE
+  FAILED
+  NOT_APPLICABLE
+}
+
+enum PaymentType {
+  ADVANCE
+  SETTLEMENT
+  FEE
+}
+
+/// Insurance product line for Coverage Protocol (multi-policy files)
+enum PolicyLine {
+  HOMEOWNERS
+  CONDO_MASTER
+  COMMERCIAL_PROPERTY
+  CGL
+  UMBRELLA
+  EXCESS
+  FLOOD
+  AUTO
+  WORKERS_COMP
+  OTHER
+}
+
+enum ContactKind {
+  VENDOR
+  CONTRACTOR
+  MITIGATION
+  ENGINEER
+  ATTORNEY
+  OTHER
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// ---------------------------------------------------------------------------
+// Claim number sequence (BL-YY-####)
+// Transaction-safe per-year counter. Application code must increment
+// `lastValue` inside the same transaction that creates the Claim.
+// Format: BL-{yy}-{lastValue padded to 4 digits}, e.g. BL-26-0001
+// ---------------------------------------------------------------------------
+
+model ClaimNumberSequence {
+  year      Int @id
+  lastValue Int @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// Adjuster (staff / auth principal)
+// ---------------------------------------------------------------------------
+
+model Adjuster {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  /// bcrypt (or similar) hash for NextAuth Credentials — never store plaintext
+  passwordHash  String
+  licenseNumber String
+  role          AdjusterRole @default(ADJUSTER)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  assignedClaims Claim[]         @relation("AssignedAdjuster")
+  uploadedDocs   Document[]      @relation("DocumentUploader")
+  statusChanges  StatusHistory[] @relation("StatusChangedBy")
+  payments       Payment[]       @relation("PaymentRecordedBy")
+  tasksAssigned  ClaimTask[]     @relation("TaskAssignee")
+  tasksCreated   ClaimTask[]     @relation("TaskCreator")
+  notesCreated   ClaimNote[]     @relation("NoteAuthor")
+  emailsLogged   ClaimEmail[]    @relation("EmailLoggedBy")
+  contactsAdded  ClaimContact[]  @relation("ContactCreator")
+  auditEvents    ClaimAuditEvent[] @relation("AuditActor")
+  inspections    Inspection[]      @relation("InspectionAdjuster")
+  inspectionSessions InspectionSession[] @relation("SessionCreator")
+  vaultUploads   DocumentVaultEntry[] @relation("VaultUploader")
+}
+
+// ---------------------------------------------------------------------------
+// Claim
+// Soft-delete only: set isArchived = true. Related Documents, Payments, and
+// StatusHistory rows are retained. Prefer onDelete: Restrict on FKs so a
+// hard delete of a Claim with children is rejected by the database.
+// ---------------------------------------------------------------------------
+
+model Claim {
+  id                     String      @id @default(cuid())
+  /// Format BL-YY-#### — Blackline (BL) claim number, generated via sequence
+  claimNumber            String      @unique
+  /// Carrier / Named Insured claim number (NI Claim #) — often unknown at intake
+  insurerClaimNumber     String?
+  status                 ClaimStatus @default(INTAKE)
+  lossType               LossType
+  dateOfLoss             DateTime    @db.Date
+  propertyAddress        String
+  zipCode                String
+  county                 String
+  /// Brief narrative from FNOL intake (Step 2)
+  lossDescription        String?     @db.Text
+  policyNumber           String?
+  carrierName            String?
+  /// Carrier desk examiner handling the file
+  deskExaminerName       String?
+  deskExaminerPhone      String?
+  deskExaminerEmail      String?
+  /// Carrier field adjuster
+  fieldAdjusterName      String?
+  fieldAdjusterPhone     String?
+  fieldAdjusterEmail     String?
+  /// Carrier / IA experts — JSON array of { name, firm?, specialty?, phone?, email? }
+  experts                Json?
+  /// HO Coverage A — Dwelling
+  coverageALimit         Decimal?    @db.Decimal(14, 2)
+  /// HO Coverage B — Other Structures
+  coverageBLimit         Decimal?    @db.Decimal(14, 2)
+  /// HO Coverage C — Personal Property
+  coverageCLimit         Decimal?    @db.Decimal(14, 2)
+  /// HO Coverage D — Loss of Use / ALE
+  coverageDLimit         Decimal?    @db.Decimal(14, 2)
+  /// Policy exclusions (narrative or listed text from certified policy)
+  policyExclusions       String?     @db.Text
+  /// Policy endorsements / forms schedule
+  policyEndorsements     String?     @db.Text
+  /// Coverage analysis — how limits/exclusions/endorsements apply to this loss
+  coverageAnalysis       String?     @db.Text
+  /// When coverage fields were last populated from a parsed policy document
+  policyParsedAt         DateTime?
+  estimatedValue         Decimal?    @db.Decimal(14, 2)
+  /// Formal demand package amount submitted to carrier
+  demandAmount           Decimal?    @db.Decimal(14, 2)
+  demandSentDate         DateTime?   @db.Date
+  /// Replacement Cost Value (estimate)
+  rcvAmount              Decimal?    @db.Decimal(14, 2)
+  /// Actual Cash Value (estimate)
+  acvAmount              Decimal?    @db.Decimal(14, 2)
+  /// Agreed / accepted settlement amount
+  settlementAmount       Decimal?    @db.Decimal(14, 2)
+  settlementDate         DateTime?   @db.Date
+  /// Notes on demand / settlement posture
+  settlementNotes        String?     @db.Text
+  /// True when loss arises from a declared catastrophe / emergency event
+  isCatClaim             Boolean     @default(false)
+  /// Firm contingency: 20% standard, 10% when isCatClaim (FL PA fee cap on CAT)
+  /// Application layer must set this from isCatClaim on create/update — do not
+  /// rely on the schema default alone when isCatClaim is true.
+  contingencyFeePercent  Decimal     @default(20.00) @db.Decimal(5, 2)
+  assignedAdjusterId     String?
+  /// Claim dates (ops calendar — separate from dateOfLoss)
+  initialContactDate        DateTime? @db.Date
+  scheduledAppointmentDate  DateTime? @db.Date
+  lossInspectedDate         DateTime? @db.Date
+  estimateCreatedDate       DateTime? @db.Date
+  reportCreatedDate         DateTime? @db.Date
+  estimateSentDate          DateTime? @db.Date
+  isArchived             Boolean     @default(false)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  assignedAdjuster Adjuster?       @relation("AssignedAdjuster", fields: [assignedAdjusterId], references: [id], onDelete: Restrict)
+  claimants        Claimant[]
+  documents        Document[]
+  statusHistory    StatusHistory[]
+  payments         Payment[]
+  contacts         ClaimContact[]
+  tasks            ClaimTask[]
+  notes            ClaimNote[]
+  emails           ClaimEmail[]
+  policies         ClaimPolicy[]
+  auditEvents      ClaimAuditEvent[]
+  properties       Property[]
+  inspections      Inspection[]
+  inspectionSessions InspectionSession[]
+  documentVaultEntries DocumentVaultEntry[]
+
+  @@index([status])
+  @@index([assignedAdjusterId])
+  @@index([status, lossType])
+  @@index([isArchived])
+  @@index([updatedAt])
+  @@index([insurerClaimNumber])
+}
+
+// ---------------------------------------------------------------------------
+// Claimant — multiple per claim (e.g. co-owners); one may be primary contact
+// ---------------------------------------------------------------------------
+
+model Claimant {
+  id                     String                 @id @default(cuid())
+  claimId                String
+  firstName              String
+  lastName               String
+  email                  String
+  phone                  String
+  mailingAddress         String
+  preferredContactMethod PreferredContactMethod @default(EMAIL)
+  isPrimaryContact       Boolean                @default(false)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+
+  @@index([claimId])
+  @@index([lastName, firstName])
+}
+
+// ---------------------------------------------------------------------------
+// Document
+// AI_HOOK: extractedData + extractionStatus are reserved for a future
+// extraction service. Leave unused this phase; upload handler will later
+// populate these after file storage.
+// ---------------------------------------------------------------------------
+
+model Document {
+  id               String           @id @default(cuid())
+  claimId          String
+  fileName         String
+  fileUrl          String
+  fileSizeBytes    Int
+  mimeType         String
+  docType          DocType
+  uploadedById     String
+  uploadedAt       DateTime         @default(now())
+  /// AI_HOOK: JSON payload from future extraction (policy #, DOL, names, etc.)
+  extractedData    Json?
+  /// AI_HOOK: set PENDING → COMPLETE/FAILED once extraction runs
+  extractionStatus ExtractionStatus @default(NOT_APPLICABLE)
+  /// Optional product-line hint set at upload / parse time
+  policyLine       PolicyLine?
+  /// Marked as the certified policy copy used for Coverage Protocol
+  isCertifiedPolicy Boolean         @default(false)
+
+  claim      Claim         @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  uploadedBy Adjuster      @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  claimPolicies ClaimPolicy[]
+  vaultEntry DocumentVaultEntry?
+
+  @@index([claimId])
+  @@index([docType])
+  @@index([uploadedById])
+  @@index([policyLine])
+  @@index([isCertifiedPolicy])
+}
+
+// ---------------------------------------------------------------------------
+// StatusHistory — append-only audit trail
+// Application MUST create a row whenever Claim.status changes, in the same
+// transaction. previousStatus is null for the initial INTAKE entry on create.
+// ---------------------------------------------------------------------------
+
+model StatusHistory {
+  id             String       @id @default(cuid())
+  claimId        String
+  previousStatus ClaimStatus?
+  newStatus      ClaimStatus
+  changedById    String
+  changedAt      DateTime     @default(now())
+  note           String?      @db.Text
+
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  changedBy Adjuster @relation("StatusChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([claimId, changedAt])
+  @@index([changedById])
+}
+
+// ---------------------------------------------------------------------------
+// Payment — ADMIN-facing log (application gate; schema allows any Adjuster FK)
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id           String      @id @default(cuid())
+  claimId      String
+  type         PaymentType
+  amount       Decimal     @db.Decimal(14, 2)
+  date         DateTime    @db.Date
+  note         String?     @db.Text
+  recordedById String
+  createdAt    DateTime    @default(now())
+
+  claim      Claim    @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  recordedBy Adjuster @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([claimId])
+  @@index([recordedById])
+}
+
+// ---------------------------------------------------------------------------
+// ClaimContact — vendors / third parties (insureds live on Claimant;
+// desk/field/experts remain on Claim)
+// ---------------------------------------------------------------------------
+
+model ClaimContact {
+  id          String      @id @default(cuid())
+  claimId     String
+  kind        ContactKind @default(VENDOR)
+  name        String
+  company     String?
+  phone       String?
+  email       String?
+  notes       String?     @db.Text
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  createdBy Adjuster @relation("ContactCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([claimId])
+  @@index([kind])
+}
+
+// ---------------------------------------------------------------------------
+// ClaimTask — assignable work items on a file
+// ---------------------------------------------------------------------------
+
+model ClaimTask {
+  id           String     @id @default(cuid())
+  claimId      String
+  title        String
+  description  String?    @db.Text
+  status       TaskStatus @default(OPEN)
+  dueDate      DateTime?  @db.Date
+  assignedToId String?
+  createdById  String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  claim      Claim     @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  assignedTo Adjuster? @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
+  createdBy  Adjuster  @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([claimId, status])
+  @@index([assignedToId])
+  @@index([dueDate])
+}
+
+// ---------------------------------------------------------------------------
+// ClaimNote — dated journal entries (Activity → Notes)
+// ---------------------------------------------------------------------------
+
+model ClaimNote {
+  id          String   @id @default(cuid())
+  claimId     String
+  body        String   @db.Text
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  createdBy Adjuster @relation("NoteAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([claimId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// ClaimEmail — saved correspondence log (not a live mailbox)
+// ---------------------------------------------------------------------------
+
+model ClaimEmail {
+  id           String         @id @default(cuid())
+  claimId      String
+  direction    EmailDirection @default(OUTBOUND)
+  subject      String
+  fromAddress  String
+  toAddress    String
+  ccAddress    String?
+  body         String         @db.Text
+  emailDate    DateTime
+  createdById  String
+  createdAt    DateTime       @default(now())
+
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  createdBy Adjuster @relation("EmailLoggedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([claimId, emailDate])
+}
+
+// ---------------------------------------------------------------------------
+// ClaimPolicy — one or more insurance policies on a claim file
+// (HO, condo master, CGL, umbrella, flood, excess, etc.)
+// limits is a JSON array of { key, label, amount, notes? }
+// ---------------------------------------------------------------------------
+
+model ClaimPolicy {
+  id               String     @id @default(cuid())
+  claimId          String
+  line             PolicyLine @default(OTHER)
+  /// Display label e.g. "Primary Property" / "Master Flood"
+  label            String?
+  policyNumber     String?
+  carrierName      String?
+  namedInsured     String?
+  effectiveDate    DateTime?  @db.Date
+  expirationDate   DateTime?  @db.Date
+  /// Flexible coverage limits for the product line
+  limits           Json?
+  deductibleNotes  String?    @db.Text
+  exclusions       String?    @db.Text
+  endorsements     String?    @db.Text
+  analysis         String?    @db.Text
+  premium          Decimal?   @db.Decimal(14, 2)
+  documentId       String?
+  parsedAt         DateTime?
+  isPrimary        Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  claim    Claim     @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@index([claimId])
+  @@index([line])
+  @@index([documentId])
+}
+
+// ---------------------------------------------------------------------------
+// ClaimAuditEvent — append-only trust log (uploads, parse, coverage edits, etc.)
+// ---------------------------------------------------------------------------
+
+model ClaimAuditEvent {
+  id         String   @id @default(cuid())
+  claimId    String
+  actorId    String
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  claim Claim    @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  actor Adjuster @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([claimId, createdAt])
+  @@index([actorId])
+  @@index([action])
+}
+
+// ---------------------------------------------------------------------------
+// Property — physical site tied to a BLACKBOX claim (address lives on Claim;
+// this row holds field GPS + lets one claim have outbuildings / additional sites)
+// ---------------------------------------------------------------------------
+
+model Property {
+  id        String   @id @default(cuid())
+  claimId   String
+  label     String   @default("Primary")
+  address   String
+  zipCode   String
+  county    String
+  gpsLat    Decimal? @db.Decimal(10, 7)
+  gpsLng    Decimal? @db.Decimal(11, 7)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  claim       Claim        @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  inspections Inspection[]
+
+  @@index([claimId])
+}
+
+// ---------------------------------------------------------------------------
+// Inspection — one field session against a claim / property
+// Client generates ids (cuid) so rows can be created offline and upserted.
+// ---------------------------------------------------------------------------
+
+model Inspection {
+  id              String            @id @default(cuid())
+  claimId         String
+  propertyId      String
+  adjusterId      String
+  /// Peril checklist loaded at start (usually Claim.lossType)
+  perilTemplate   LossType
+  status          InspectionStatus  @default(IN_PROGRESS)
+  startedAt       DateTime          @default(now())
+  completedAt     DateTime?
+  /// Auto-generated scope draft; adjuster edits before finalize
+  narrativeDraft  String?           @db.Text
+  narrativeFinal  String?           @db.Text
+  /// Last-write-wins sync — bump on every local mutation
+  clientRev       Int               @default(0)
+  syncedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  claim    Claim          @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  property Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  adjuster Adjuster       @relation("InspectionAdjuster", fields: [adjusterId], references: [id], onDelete: Restrict)
+  items    InspectionItem[]
+  sessions InspectionSession[]
+  photos   Photo[]
+
+  @@index([claimId])
+  @@index([propertyId])
+  @@index([adjusterId])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+// ---------------------------------------------------------------------------
+// InspectionItem — one indicator on the peril checklist
+// ---------------------------------------------------------------------------
+
+model InspectionItem {
+  id                String              @id @default(cuid())
+  inspectionId      String
+  category          InspectionCategory
+  /// Stable key from the indicator library (e.g. "roof.missing_shingles")
+  indicatorType     String
+  presence          Presence            @default(UNSET)
+  severity          Severity?
+  confidence        Confidence?
+  notes             String?             @db.Text
+  measurementValue  Decimal?            @db.Decimal(12, 3)
+  measurementUnit   String?
+  gpsLat            Decimal?            @db.Decimal(10, 7)
+  gpsLng            Decimal?            @db.Decimal(11, 7)
+  capturedAt        DateTime?
+  sortOrder         Int                 @default(0)
+  clientRev         Int                 @default(0)
+  /// AI draft — never treated as a determination until adjusterConfirmed
+  aiSuggestedCategory   InspectionCategory?
+  aiSuggestedIndicator  String?
+  aiConfidence          Confidence?
+  aiEstimatedSeverity   Severity?
+  aiRationale           String?             @db.Text
+  /// Top reference example ids from pgvector match
+  similarReferenceIds   Json?
+  adjusterConfirmed     Boolean             @default(false)
+  /// Category the licensed adjuster adopted (may differ from AI)
+  adjusterFinalCategory InspectionCategory?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  photos     Photo[]
+
+  @@unique([inspectionId, indicatorType])
+  @@index([inspectionId, category])
+  @@index([indicatorType])
+  @@index([updatedAt])
+  @@index([adjusterConfirmed])
+}
+
+// ---------------------------------------------------------------------------
+// InspectionSession — one site visit (date + reason) grouping photos
+// ---------------------------------------------------------------------------
+
+model InspectionSession {
+  id               String            @id @default(cuid())
+  claimId          String
+  inspectionId     String
+  date             DateTime          @db.Date
+  reason           InspectionReason  @default(INITIAL_INSPECTION)
+  customReasonText String?
+  createdById      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  claim      Claim      @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  createdBy  Adjuster   @relation("SessionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  photos     Photo[]
+
+  @@index([claimId])
+  @@index([inspectionId])
+  @@index([createdById])
+}
+
+// ---------------------------------------------------------------------------
+// Photo — field capture. Held locally first; AI + vault wait on connectivity.
+// inspectionItemId is set once classified/attached.
+// ---------------------------------------------------------------------------
+
+model Photo {
+  id                        String          @id @default(cuid())
+  inspectionId              String
+  inspectionSessionId       String?
+  inspectionItemId          String?
+  url                       String          @default("")
+  storagePath               String?
+  locationTag               String?
+  captureDate               DateTime        @db.Date
+  reason                    InspectionReason @default(INITIAL_INSPECTION)
+  customReasonText          String?
+  aiDescription             String?         @db.Text
+  adjusterEditedDescription String?         @db.Text
+  gpsLat                    Decimal?        @db.Decimal(10, 7)
+  gpsLng                    Decimal?        @db.Decimal(11, 7)
+  syncStatus                PhotoSyncStatus @default(PENDING)
+  exifData                  Json?
+  annotations               Json?
+  caption                   String?
+  capturedAt                DateTime        @default(now())
+  clientRev                 Int             @default(0)
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+
+  inspection Inspection          @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  session    InspectionSession?  @relation(fields: [inspectionSessionId], references: [id], onDelete: Restrict)
+  inspectionItem InspectionItem? @relation(fields: [inspectionItemId], references: [id], onDelete: Restrict)
+  vaultEntry DocumentVaultEntry?
+
+  @@index([inspectionId])
+  @@index([inspectionSessionId])
+  @@index([inspectionItemId])
+  @@index([syncStatus])
+  @@index([capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// DocumentVaultEntry — files BLACKMIRROR photos into BLACKBOX's claim vault
+// displayPath is the human-readable folder convention.
+// ---------------------------------------------------------------------------
+
+model DocumentVaultEntry {
+  id           String   @id @default(cuid())
+  claimId      String
+  photoId      String?  @unique
+  documentId   String?  @unique
+  displayPath  String
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  claim      Claim     @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  photo      Photo?    @relation(fields: [photoId], references: [id], onDelete: Restrict)
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  uploadedBy Adjuster  @relation("VaultUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([claimId])
+  @@index([uploadedById])
+}
+
+// ---------------------------------------------------------------------------
+// ReferenceExample — curated exemplars for similarity (pgvector)
+// embedding is vector(384); queried via raw SQL, not Prisma filters.
+// ---------------------------------------------------------------------------
+
+model ReferenceExample {
+  id            String              @id @default(cuid())
+  category      InspectionCategory
+  indicatorType String
+  imageUrl      String              @default("")
+  description   String              @db.Text
+  sourceNote    String
+  /// pgvector cosine embedding of description + indicator labels
+  embedding     Unsupported("vector")?
+  createdAt     DateTime            @default(now())
+
+  @@index([category, indicatorType])
+  @@index([indicatorType])
+}
