@@ -30,7 +30,6 @@ export async function POST(req: Request) {
   const file = form.get("file");
   const photoId = String(form.get("id") ?? newId());
   const inspectionId = String(form.get("inspectionId") ?? "");
-  const inspectionItemIdRaw = String(form.get("inspectionItemId") ?? "");
   const locationTag = String(form.get("locationTag") ?? "").trim();
   const captureDate = String(form.get("captureDate") ?? "").slice(0, 10);
   const reason = String(form.get("reason") ?? "INITIAL_INSPECTION") as InspectionReason;
@@ -93,11 +92,17 @@ export async function POST(req: Request) {
   });
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  const stored = await storeVaultPhoto({
-    storagePath,
-    bytes,
-    mimeType: file.type || "image/jpeg",
-  });
+  let stored: { fileUrl: string; storagePath: string };
+  try {
+    stored = await storeVaultPhoto({
+      storagePath,
+      bytes,
+      mimeType: file.type || "image/jpeg",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Storage upload failed";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 
   let similarReferenceIds: string[] = [];
   try {
@@ -106,7 +111,15 @@ export async function POST(req: Request) {
     similarReferenceIds = [];
   }
 
-  const result = await prisma.$transaction(
+  let result: {
+    itemId: string;
+    sessionId: string;
+    vaultId: string;
+    url: string;
+    storagePath: string;
+  };
+  try {
+    result = await prisma.$transaction(
     async (tx) => {
     let sessionRowId = sessionId;
     if (!sessionRowId) {
@@ -124,14 +137,12 @@ export async function POST(req: Request) {
       sessionRowId = created.id;
     }
 
-    let itemId = inspectionItemIdRaw || null;
-    const existingItem = itemId
-      ? await tx.inspectionItem.findUnique({ where: { id: itemId } })
-      : await tx.inspectionItem.findUnique({
-          where: {
-            inspectionId_indicatorType: { inspectionId, indicatorType },
-          },
-        });
+    const matchedItem = await tx.inspectionItem.findUnique({
+      where: {
+        inspectionId_indicatorType: { inspectionId, indicatorType: def.type },
+      },
+    });
+    let itemId = matchedItem?.id ?? null;
 
     const sev: Severity | null =
       severity === "MINOR" ||
@@ -163,12 +174,25 @@ export async function POST(req: Request) {
       adjusterFinalCategory: confirm ? def.category : null,
     };
 
-    if (existingItem) {
-      itemId = existingItem.id;
+    if (matchedItem) {
       await tx.inspectionItem.update({
-        where: { id: existingItem.id },
+        where: { id: matchedItem.id },
         data: {
-          ...itemData,
+          presence: itemData.presence,
+          severity: itemData.severity,
+          confidence: itemData.confidence,
+          notes: itemData.notes,
+          gpsLat: itemData.gpsLat,
+          gpsLng: itemData.gpsLng,
+          capturedAt: itemData.capturedAt,
+          aiSuggestedCategory: itemData.aiSuggestedCategory,
+          aiSuggestedIndicator: itemData.aiSuggestedIndicator,
+          aiConfidence: itemData.aiConfidence,
+          aiEstimatedSeverity: itemData.aiEstimatedSeverity,
+          aiRationale: itemData.aiRationale,
+          similarReferenceIds: itemData.similarReferenceIds,
+          adjusterConfirmed: itemData.adjusterConfirmed,
+          adjusterFinalCategory: itemData.adjusterFinalCategory,
           clientRev: { increment: 1 },
         },
       });
@@ -182,6 +206,10 @@ export async function POST(req: Request) {
           ...itemData,
         },
       });
+    }
+
+    if (!itemId) {
+      throw new Error("ITEM_ATTACH_FAILED");
     }
 
     await tx.photo.upsert({
@@ -290,4 +318,8 @@ export async function POST(req: Request) {
   );
 
   return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Vault write failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
