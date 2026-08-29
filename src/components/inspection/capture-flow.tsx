@@ -157,6 +157,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
       toast(err instanceof Error ? err.message : "AI unavailable — photo is cached");
       await onComplete();
       onClose();
+      void runSync();
     } finally {
       setAnalyzing(false);
     }
@@ -167,6 +168,8 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
     setSaving(true);
     try {
       const form = new FormData();
+      const local = await getLocalInspection(inspectionId);
+      if (local) form.set("claimId", local.claimId);
       form.set("id", photo.id);
       form.set("inspectionId", inspectionId);
       if (itemId) form.set("inspectionItemId", itemId);
@@ -450,7 +453,14 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
         />
       </div>
       <div className="grid grid-cols-2 gap-2 px-4 py-3 pb-safe">
-        <Button variant="outline" className="h-12" onClick={onClose}>
+        <Button
+          variant="outline"
+          className="h-12"
+          onClick={() => {
+            onClose();
+            void runSync();
+          }}
+        >
           Later
         </Button>
         <Button

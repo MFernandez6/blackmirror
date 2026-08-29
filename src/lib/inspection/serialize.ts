@@ -3,19 +3,28 @@ import { prisma } from "@/lib/prisma";
 import { newId } from "@/lib/inspection/ids";
 import type { CachedClaim } from "@/lib/offline/types";
 
+type Db = {
+  property: typeof prisma.property;
+  claim: typeof prisma.claim;
+  inspection: typeof prisma.inspection;
+};
+
 function dec(value: Prisma.Decimal | number | null | undefined): number | null {
   if (value == null) return null;
   return Number(value);
 }
 
-export async function ensurePropertyForClaim(claimId: string) {
-  const existing = await prisma.property.findFirst({
+export async function ensurePropertyForClaim(
+  claimId: string,
+  db: Db = prisma
+) {
+  const existing = await db.property.findFirst({
     where: { claimId },
     orderBy: { createdAt: "asc" },
   });
   if (existing) return existing;
 
-  const claim = await prisma.claim.findUnique({
+  const claim = await db.claim.findUnique({
     where: { id: claimId },
     select: {
       propertyAddress: true,
@@ -25,7 +34,7 @@ export async function ensurePropertyForClaim(claimId: string) {
   });
   if (!claim) throw new Error("CLAIM_NOT_FOUND");
 
-  return prisma.property.create({
+  return db.property.create({
     data: {
       id: newId(),
       claimId,
@@ -34,6 +43,43 @@ export async function ensurePropertyForClaim(claimId: string) {
       zipCode: claim.zipCode,
       county: claim.county,
     },
+  });
+}
+
+/** Create the inspection row if the field session has not synced yet. */
+export async function ensureInspectionRow(opts: {
+  id: string;
+  claimId: string;
+  adjusterId: string;
+  perilTemplate?: LossType;
+  db?: Db;
+}) {
+  const db = opts.db ?? prisma;
+  const existing = await db.inspection.findUnique({
+    where: { id: opts.id },
+    include: { claim: { select: { id: true, claimNumber: true } } },
+  });
+  if (existing) return existing;
+
+  const claim = await db.claim.findUnique({
+    where: { id: opts.claimId },
+    select: { id: true, claimNumber: true, lossType: true },
+  });
+  if (!claim) return null;
+
+  const property = await ensurePropertyForClaim(claim.id, db);
+  return db.inspection.create({
+    data: {
+      id: opts.id,
+      claimId: claim.id,
+      propertyId: property.id,
+      adjusterId: opts.adjusterId,
+      perilTemplate: opts.perilTemplate ?? claim.lossType,
+      status: "IN_PROGRESS",
+      clientRev: 1,
+      syncedAt: new Date(),
+    },
+    include: { claim: { select: { id: true, claimNumber: true } } },
   });
 }
 

@@ -11,6 +11,7 @@ import {
   pendingOutboxCount,
   removeOutbox,
   savePhotoAnalysis,
+  getLocalInspection,
 } from "./repo";
 import type {
   AiDraft,
@@ -36,6 +37,7 @@ type Listener = (status: SyncStatus) => void;
 
 const listeners = new Set<Listener>();
 let syncing = false;
+let syncQueued = false;
 let lastError: string | null = null;
 let lastSyncedAt: string | null = null;
 let started = false;
@@ -162,6 +164,8 @@ async function processCaptureQueue(): Promise<void> {
     );
     if (fresh.gpsLat != null) commit.set("gpsLat", String(fresh.gpsLat));
     if (fresh.gpsLng != null) commit.set("gpsLng", String(fresh.gpsLng));
+    const parent = await getLocalInspection(fresh.inspectionId);
+    if (parent) commit.set("claimId", parent.claimId);
     commit.set("file", fresh.blob!, `${fresh.id}.jpg`);
 
     const committed = await fetch("/api/inspections/commit-photo", {
@@ -306,13 +310,16 @@ export async function runSync(): Promise<void> {
     await emit();
     return;
   }
-  if (syncing) return;
+  if (syncing) {
+    syncQueued = true;
+    return;
+  }
   syncing = true;
   lastError = null;
   await emit();
   try {
-    await processCaptureQueue();
     await pushDirty();
+    await processCaptureQueue();
     await pullRemote();
     const leftover = await listOutbox();
     for (const entry of leftover) {
@@ -328,6 +335,10 @@ export async function runSync(): Promise<void> {
   } finally {
     syncing = false;
     await emit();
+    if (syncQueued) {
+      syncQueued = false;
+      void runSync();
+    }
   }
 }
 

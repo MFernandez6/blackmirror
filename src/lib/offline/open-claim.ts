@@ -43,6 +43,10 @@ export async function openClaimInspection(opts: {
     adjusterName: opts.adjusterName,
     peril: opts.peril ?? opts.claim.lossType,
   });
-  void runSync();
+  if (navigator.onLine) {
+    await runSync();
+  } else {
+    void runSync();
+  }
   return inspection.id;
 }

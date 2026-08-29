@@ -10,6 +10,7 @@ import {
   type InspectionReason,
 } from "@/lib/inspection/catalog";
 import { newId } from "@/lib/inspection/ids";
+import { ensureInspectionRow } from "@/lib/inspection/serialize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
   const gpsLat = form.get("gpsLat") ? Number(form.get("gpsLat")) : null;
   const gpsLng = form.get("gpsLng") ? Number(form.get("gpsLng")) : null;
   const sessionId = String(form.get("sessionId") ?? "") || null;
+  const claimId = String(form.get("claimId") ?? "");
 
   if (!(file instanceof File) || !inspectionId || !locationTag || !captureDate) {
     return NextResponse.json({ error: "INVALID_COMMIT" }, { status: 400 });
@@ -55,10 +57,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "UNKNOWN_INDICATOR" }, { status: 400 });
   }
 
-  const inspection = await prisma.inspection.findUnique({
-    where: { id: inspectionId },
-    include: { claim: { select: { id: true, claimNumber: true } } },
-  });
+  const inspection =
+    (await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { claim: { select: { id: true, claimNumber: true } } },
+    })) ??
+    (claimId
+      ? await ensureInspectionRow({
+          id: inspectionId,
+          claimId,
+          adjusterId: adjuster.id,
+        })
+      : null);
   if (!inspection) {
     return NextResponse.json({ error: "INSPECTION_NOT_FOUND" }, { status: 404 });
   }
@@ -96,7 +106,8 @@ export async function POST(req: Request) {
     similarReferenceIds = [];
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(
+    async (tx) => {
     let sessionRowId = sessionId;
     if (!sessionRowId) {
       const created = await tx.inspectionSession.create({
@@ -212,47 +223,71 @@ export async function POST(req: Request) {
       },
     });
 
-    const document = await tx.document.create({
-      data: {
-        claimId: inspection.claimId,
-        fileName: stored.storagePath.split("/").slice(-1)[0] ?? "photo.jpg",
-        fileUrl: stored.fileUrl,
-        fileSizeBytes: bytes.byteLength,
-        mimeType: file.type || "image/jpeg",
-        docType: "PHOTO",
-        uploadedById: adjuster.id,
-      },
+    const fileName = stored.storagePath.split("/").slice(-1)[0] ?? "photo.jpg";
+    const existingVault = await tx.documentVaultEntry.findUnique({
+      where: { photoId },
     });
-
-    const vault = await tx.documentVaultEntry.create({
-      data: {
-        claimId: inspection.claimId,
-        photoId,
-        documentId: document.id,
-        displayPath: displayVaultPath(stored.storagePath),
-        uploadedById: adjuster.id,
-      },
-    });
-
-    await tx.claimAuditEvent.create({
-      data: {
-        claimId: inspection.claimId,
-        actorId: adjuster.id,
-        action: "INSPECTION_PHOTO_VAULT",
-        entityType: "Photo",
-        entityId: photoId,
-        summary: `Filed inspection photo at ${displayVaultPath(stored.storagePath)}`,
-        meta: {
-          indicatorType,
-          aiSuggestedIndicator,
-          adjusterConfirmed: confirm,
-          category: categoryRaw || def.category,
+    let vault: { id: string };
+    if (existingVault?.documentId) {
+      await tx.document.update({
+        where: { id: existingVault.documentId },
+        data: {
+          fileName,
+          fileUrl: stored.fileUrl,
+          fileSizeBytes: bytes.byteLength,
+          mimeType: file.type || "image/jpeg",
         },
-      },
-    });
+      });
+      vault = await tx.documentVaultEntry.update({
+        where: { id: existingVault.id },
+        data: { displayPath: displayVaultPath(stored.storagePath) },
+      });
+    } else {
+      const document = await tx.document.create({
+        data: {
+          claimId: inspection.claimId,
+          fileName,
+          fileUrl: stored.fileUrl,
+          fileSizeBytes: bytes.byteLength,
+          mimeType: file.type || "image/jpeg",
+          docType: "PHOTO",
+          uploadedById: adjuster.id,
+        },
+      });
+      vault = await tx.documentVaultEntry.create({
+        data: {
+          claimId: inspection.claimId,
+          photoId,
+          documentId: document.id,
+          displayPath: displayVaultPath(stored.storagePath),
+          uploadedById: adjuster.id,
+        },
+      });
+    }
+
+    if (!existingVault?.documentId) {
+      await tx.claimAuditEvent.create({
+        data: {
+          claimId: inspection.claimId,
+          actorId: adjuster.id,
+          action: "INSPECTION_PHOTO_VAULT",
+          entityType: "Photo",
+          entityId: photoId,
+          summary: `Filed inspection photo at ${displayVaultPath(stored.storagePath)}`,
+          meta: {
+            indicatorType,
+            aiSuggestedIndicator,
+            adjusterConfirmed: confirm,
+            category: categoryRaw || def.category,
+          },
+        },
+      });
+    }
 
     return { itemId, sessionId: sessionRowId, vaultId: vault.id, url: stored.fileUrl, storagePath: stored.storagePath };
-  });
+  },
+    { timeout: 20_000, maxWait: 10_000 }
+  );
 
   return NextResponse.json({ ok: true, ...result });
 }

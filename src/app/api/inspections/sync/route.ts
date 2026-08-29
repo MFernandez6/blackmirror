@@ -8,6 +8,7 @@ import {
   toSyncInspection,
   toSyncItem,
   toSyncPhoto,
+  ensurePropertyForClaim,
 } from "@/lib/inspection/serialize";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +99,13 @@ export async function POST(req: Request) {
 
   const { inspections, items, photos } = parsed.data;
 
+  const claimIds = Array.from(new Set(inspections.map((row) => row.claimId)));
+  for (const claimId of claimIds) {
+    await ensurePropertyForClaim(claimId);
+  }
+
+  const txOpts = { timeout: 20_000, maxWait: 10_000 } as const;
+
   await prisma.$transaction(async (tx) => {
     for (const row of inspections) {
       if (adjuster.role === "ADJUSTER" && row.adjusterId !== adjuster.id) {
@@ -116,9 +124,21 @@ export async function POST(req: Request) {
         continue;
       }
 
+      const property =
+        (await tx.property.findUnique({
+          where: { id: row.propertyId },
+          select: { id: true },
+        })) ??
+        (await tx.property.findFirst({
+          where: { claimId: row.claimId },
+          select: { id: true },
+          orderBy: { createdAt: "asc" },
+        }));
+      if (!property) continue;
+
       const data = {
         claimId: row.claimId,
-        propertyId: row.propertyId,
+        propertyId: property.id,
         adjusterId: row.adjusterId,
         perilTemplate: row.perilTemplate,
         status: row.status,
@@ -138,138 +158,152 @@ export async function POST(req: Request) {
         update: data,
       });
     }
+  }, txOpts);
 
-    for (const row of items) {
-      const parent = await tx.inspection.findUnique({
-        where: { id: row.inspectionId },
-        select: { adjusterId: true, clientRev: true },
-      });
-      if (!parent) continue;
-      if (adjuster.role === "ADJUSTER" && parent.adjusterId !== adjuster.id) {
-        continue;
-      }
+  const ITEM_CHUNK = 20;
+  for (let i = 0; i < items.length; i += ITEM_CHUNK) {
+    const slice = items.slice(i, i + ITEM_CHUNK);
+    await prisma.$transaction(async (tx) => {
+      for (const row of slice) {
+        const parent = await tx.inspection.findUnique({
+          where: { id: row.inspectionId },
+          select: { adjusterId: true },
+        });
+        if (!parent) continue;
+        if (adjuster.role === "ADJUSTER" && parent.adjusterId !== adjuster.id) {
+          continue;
+        }
 
-      const existing = await tx.inspectionItem.findUnique({
-        where: { id: row.id },
-        select: { clientRev: true, updatedAt: true },
-      });
-      if (
-        existing &&
-        (existing.clientRev > row.clientRev ||
-          (existing.clientRev === row.clientRev &&
-            existing.updatedAt > new Date(row.updatedAt)))
-      ) {
-        continue;
-      }
+        const existing = await tx.inspectionItem.findUnique({
+          where: { id: row.id },
+          select: { clientRev: true, updatedAt: true },
+        });
+        if (
+          existing &&
+          (existing.clientRev > row.clientRev ||
+            (existing.clientRev === row.clientRev &&
+              existing.updatedAt > new Date(row.updatedAt)))
+        ) {
+          continue;
+        }
 
-      const data: Prisma.InspectionItemUncheckedCreateInput = {
-        id: row.id,
-        inspectionId: row.inspectionId,
-        category: row.category,
-        indicatorType: row.indicatorType,
-        presence: row.presence,
-        severity: row.severity,
-        confidence: row.confidence,
-        notes: row.notes,
-        measurementValue: row.measurementValue,
-        measurementUnit: row.measurementUnit,
-        gpsLat: row.gpsLat,
-        gpsLng: row.gpsLng,
-        capturedAt: row.capturedAt ? new Date(row.capturedAt) : null,
-        sortOrder: row.sortOrder,
-        clientRev: row.clientRev,
-        createdAt: new Date(row.createdAt),
-        updatedAt: new Date(row.updatedAt),
-        aiSuggestedCategory: row.aiSuggestedCategory ?? null,
-        aiSuggestedIndicator: row.aiSuggestedIndicator ?? null,
-        aiConfidence: row.aiConfidence ?? null,
-        aiEstimatedSeverity: row.aiEstimatedSeverity ?? null,
-        aiRationale: row.aiRationale ?? null,
-        similarReferenceIds: (row.similarReferenceIds ?? []) as Prisma.InputJsonValue,
-        adjusterConfirmed: row.adjusterConfirmed ?? false,
-        adjusterFinalCategory: row.adjusterFinalCategory ?? null,
-      };
-
-      await tx.inspectionItem.upsert({
-        where: { id: row.id },
-        create: data,
-        update: {
-          presence: data.presence,
-          severity: data.severity,
-          confidence: data.confidence,
-          notes: data.notes,
-          measurementValue: data.measurementValue,
-          measurementUnit: data.measurementUnit,
-          gpsLat: data.gpsLat,
-          gpsLng: data.gpsLng,
-          capturedAt: data.capturedAt,
-          sortOrder: data.sortOrder,
-          clientRev: data.clientRev,
-          updatedAt: data.updatedAt,
-          aiSuggestedCategory: data.aiSuggestedCategory,
-          aiSuggestedIndicator: data.aiSuggestedIndicator,
-          aiConfidence: data.aiConfidence,
-          aiEstimatedSeverity: data.aiEstimatedSeverity,
-          aiRationale: data.aiRationale,
-          similarReferenceIds: data.similarReferenceIds,
-          adjusterConfirmed: data.adjusterConfirmed,
-          adjusterFinalCategory: data.adjusterFinalCategory,
-        },
-      });
-    }
-
-    for (const row of photos) {
-      const inspection = await tx.inspection.findUnique({
-        where: { id: row.inspectionId },
-        select: { adjusterId: true },
-      });
-      if (!inspection) continue;
-      if (adjuster.role === "ADJUSTER" && inspection.adjusterId !== adjuster.id) {
-        continue;
-      }
-
-      const existing = await tx.photo.findUnique({
-        where: { id: row.id },
-        select: { clientRev: true, updatedAt: true, url: true },
-      });
-      if (
-        existing &&
-        (existing.clientRev > row.clientRev ||
-          (existing.clientRev === row.clientRev &&
-            existing.updatedAt > new Date(row.updatedAt)))
-      ) {
-        continue;
-      }
-
-      const url = row.url || existing?.url || "";
-      await tx.photo.upsert({
-        where: { id: row.id },
-        create: {
+        const data: Prisma.InspectionItemUncheckedCreateInput = {
           id: row.id,
           inspectionId: row.inspectionId,
-          inspectionItemId: row.inspectionItemId ?? null,
-          url,
-          caption: row.caption,
-          exifData: row.exifData as Prisma.InputJsonValue | undefined,
-          annotations: row.annotations as Prisma.InputJsonValue,
-          capturedAt: new Date(row.capturedAt),
-          captureDate: new Date(row.capturedAt),
+          category: row.category,
+          indicatorType: row.indicatorType,
+          presence: row.presence,
+          severity: row.severity,
+          confidence: row.confidence,
+          notes: row.notes,
+          measurementValue: row.measurementValue,
+          measurementUnit: row.measurementUnit,
+          gpsLat: row.gpsLat,
+          gpsLng: row.gpsLng,
+          capturedAt: row.capturedAt ? new Date(row.capturedAt) : null,
+          sortOrder: row.sortOrder,
           clientRev: row.clientRev,
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
-        },
-        update: {
-          url,
-          caption: row.caption,
-          exifData: row.exifData as Prisma.InputJsonValue | undefined,
-          annotations: row.annotations as Prisma.InputJsonValue,
-          capturedAt: new Date(row.capturedAt),
-          clientRev: row.clientRev,
-          updatedAt: new Date(row.updatedAt),
-        },
-      });
-    }
-  });
+          aiSuggestedCategory: row.aiSuggestedCategory ?? null,
+          aiSuggestedIndicator: row.aiSuggestedIndicator ?? null,
+          aiConfidence: row.aiConfidence ?? null,
+          aiEstimatedSeverity: row.aiEstimatedSeverity ?? null,
+          aiRationale: row.aiRationale ?? null,
+          similarReferenceIds: (row.similarReferenceIds ??
+            []) as Prisma.InputJsonValue,
+          adjusterConfirmed: row.adjusterConfirmed ?? false,
+          adjusterFinalCategory: row.adjusterFinalCategory ?? null,
+        };
+
+        await tx.inspectionItem.upsert({
+          where: { id: row.id },
+          create: data,
+          update: {
+            presence: data.presence,
+            severity: data.severity,
+            confidence: data.confidence,
+            notes: data.notes,
+            measurementValue: data.measurementValue,
+            measurementUnit: data.measurementUnit,
+            gpsLat: data.gpsLat,
+            gpsLng: data.gpsLng,
+            capturedAt: data.capturedAt,
+            sortOrder: data.sortOrder,
+            clientRev: data.clientRev,
+            updatedAt: data.updatedAt,
+            aiSuggestedCategory: data.aiSuggestedCategory,
+            aiSuggestedIndicator: data.aiSuggestedIndicator,
+            aiConfidence: data.aiConfidence,
+            aiEstimatedSeverity: data.aiEstimatedSeverity,
+            aiRationale: data.aiRationale,
+            similarReferenceIds: data.similarReferenceIds,
+            adjusterConfirmed: data.adjusterConfirmed,
+            adjusterFinalCategory: data.adjusterFinalCategory,
+          },
+        });
+      }
+    }, txOpts);
+  }
+
+  if (photos.length) {
+    await prisma.$transaction(async (tx) => {
+      for (const row of photos) {
+        const inspection = await tx.inspection.findUnique({
+          where: { id: row.inspectionId },
+          select: { adjusterId: true },
+        });
+        if (!inspection) continue;
+        if (
+          adjuster.role === "ADJUSTER" &&
+          inspection.adjusterId !== adjuster.id
+        ) {
+          continue;
+        }
+
+        const existing = await tx.photo.findUnique({
+          where: { id: row.id },
+          select: { clientRev: true, updatedAt: true, url: true },
+        });
+        if (
+          existing &&
+          (existing.clientRev > row.clientRev ||
+            (existing.clientRev === row.clientRev &&
+              existing.updatedAt > new Date(row.updatedAt)))
+        ) {
+          continue;
+        }
+
+        const url = row.url || existing?.url || "";
+        await tx.photo.upsert({
+          where: { id: row.id },
+          create: {
+            id: row.id,
+            inspectionId: row.inspectionId,
+            inspectionItemId: row.inspectionItemId ?? null,
+            url,
+            caption: row.caption,
+            exifData: row.exifData as Prisma.InputJsonValue | undefined,
+            annotations: row.annotations as Prisma.InputJsonValue,
+            capturedAt: new Date(row.capturedAt),
+            captureDate: new Date(row.capturedAt),
+            clientRev: row.clientRev,
+            createdAt: new Date(row.createdAt),
+            updatedAt: new Date(row.updatedAt),
+          },
+          update: {
+            url,
+            caption: row.caption,
+            exifData: row.exifData as Prisma.InputJsonValue | undefined,
+            annotations: row.annotations as Prisma.InputJsonValue,
+            capturedAt: new Date(row.capturedAt),
+            clientRev: row.clientRev,
+            updatedAt: new Date(row.updatedAt),
+          },
+        });
+      }
+    }, txOpts);
+  }
 
   return NextResponse.json({ ok: true, syncedAt: new Date().toISOString() });
 }
