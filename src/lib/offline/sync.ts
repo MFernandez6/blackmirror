@@ -2,6 +2,7 @@ import { getDb } from "./db";
 import {
   bumpOutboxError,
   listOutbox,
+  listPendingPhotoDeletes,
   listPendingPhotos,
   markInspectionClean,
   markItemClean,
@@ -70,6 +71,20 @@ export function subscribeSync(listener: Listener) {
 async function emit() {
   const snap = await getSyncSnapshot();
   listeners.forEach((fn) => fn(snap));
+}
+
+async function processPhotoDeletes(): Promise<void> {
+  const pending = await listPendingPhotoDeletes();
+  for (const entry of pending) {
+    const res = await fetch(`/api/inspections/photos/${entry.entityId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok && res.status !== 404) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`Photo delete failed (${res.status}): ${text}`);
+    }
+    await removeOutbox(entry.id);
+  }
 }
 
 async function pushDirty(): Promise<void> {
@@ -212,6 +227,9 @@ async function pullRemote(): Promise<void> {
   }
   const data = (await res.json()) as SyncPullResult & { claims?: CachedClaim[] };
   const db = getDb();
+  const pendingDeletes = new Set(
+    (await listPendingPhotoDeletes()).map((row) => row.entityId)
+  );
 
   await db.transaction(
     "rw",
@@ -277,6 +295,7 @@ async function pullRemote(): Promise<void> {
       }
 
       for (const remote of data.photos) {
+        if (pendingDeletes.has(remote.id)) continue;
         const local = await db.photos.get(remote.id);
         if (!local) {
           await db.photos.put({
@@ -318,6 +337,7 @@ export async function runSync(): Promise<void> {
   lastError = null;
   await emit();
   try {
+    await processPhotoDeletes();
     await pushDirty();
     await processCaptureQueue();
     await pullRemote();

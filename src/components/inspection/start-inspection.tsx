@@ -131,16 +131,16 @@ export function StartInspection() {
   }
 
   return (
-    <div className="flex flex-1 flex-col px-4 py-5 pb-safe">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-5 pb-safe sm:px-6">
       <p className="eyebrow">Initial site visit</p>
-      <h1 className="mt-2 font-serif text-2xl tracking-wide">Open a file</h1>
+      <h1 className="mt-2 font-serif text-2xl tracking-wide sm:text-3xl">Open a file</h1>
       <p className="mt-2 text-sm text-brand-slate">
         Inspection before BLACKBOX assignment. Issues the next Blackline PA
         number, captures enough to work the site, and leaves the rest for the
         office.
       </p>
 
-      <div className="mt-5 border border-brand-gold/30 bg-brand-gold/10 px-3 py-3">
+      <div className="mt-5 rounded-md border border-brand-gold/30 bg-brand-gold/10 px-3 py-3">
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-brand-slate">
           Next BLACKLINE number
         </p>
@@ -255,13 +255,13 @@ export function StartInspection() {
       </div>
 
       <p className="eyebrow mt-6 mb-3">Peril</p>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {PERILS.map((p) => (
           <button
             key={p}
             type="button"
             onClick={() => setPeril(p)}
-            className={`h-11 border font-mono text-[10px] font-bold uppercase tracking-[0.16em] touch-manipulation ${
+            className={`h-11 rounded-md border font-sans text-[10px] font-bold uppercase tracking-[0.16em] touch-manipulation ${
               peril === p
                 ? "border-brand-gold bg-brand-gold/15 text-brand-gold"
                 : "border-white/15 text-brand-slate"

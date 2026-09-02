@@ -19,9 +19,9 @@ export function SyncBar() {
       type="button"
       onClick={() => void runSync()}
       className={cn(
-        "flex w-full items-center justify-between gap-3 border-b px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.22em]",
+        "flex w-full items-center justify-between gap-3 border-b px-4 py-2 font-sans text-[10px] font-bold uppercase tracking-[0.2em] sm:px-6",
         status.online
-          ? "border-white/10 bg-[#05070b] text-brand-gold"
+          ? "border-brand-white/5 bg-brand-navy-deep/40 text-brand-gold"
           : "border-severity-severe/40 bg-severity-severe/15 text-severity-moderate"
       )}
     >
@@ -29,7 +29,9 @@ export function SyncBar() {
         <span
           className={cn(
             "inline-block h-1.5 w-1.5",
-            status.online ? "bg-severity-minor" : "bg-severity-moderate"
+            status.online
+              ? "animate-gate-pulse bg-brand-amber"
+              : "bg-severity-moderate"
           )}
         />
         {label}

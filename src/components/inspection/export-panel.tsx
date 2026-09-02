@@ -32,7 +32,7 @@ export function ExportPanel({
   }
 
   return (
-    <div className="px-4 py-6 pb-28">
+    <div className="mx-auto w-full max-w-2xl px-4 py-6 pb-28 sm:px-6 lg:pb-8">
       <p className="eyebrow">Work product</p>
       <h2 className="mt-2 font-serif text-2xl">Export report</h2>
       <p className="mt-2 text-sm text-brand-slate">

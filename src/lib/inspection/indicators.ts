@@ -414,6 +414,15 @@ export function defaultCoverageTab(peril: LossType): CoverageTabId {
   return "DWELLING";
 }
 
+export const ALL_COVERAGE_TAB_IDS: CoverageTabId[] = COVERAGE_TABS.map(
+  (tab) => tab.id
+);
+
+/** New walks start with every coverage off. Empty still means “all apply” for older sessions. */
+export function defaultSkippedCoverages(): CoverageTabId[] {
+  return [...ALL_COVERAGE_TAB_IDS];
+}
+
 export function isTabSkipped(
   id: CoverageTabId,
   skipped: CoverageTabId[] | undefined

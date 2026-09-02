@@ -87,35 +87,45 @@ export function InspectionList() {
 
   return (
     <div className="flex flex-1 flex-col pb-safe">
-      <div className="px-4 py-5">
-        <p className="eyebrow">Assigned in BLACKBOX</p>
-        <h1 className="mt-2 font-serif text-2xl tracking-wide text-brand-white">
-          {firstName}&rsquo;s files
-        </h1>
-        <p className="mt-2 text-sm text-brand-slate">
-          Pick a claim assigned to you, then start or continue the inspection.
-        </p>
+      <div className="px-4 py-5 sm:px-6 md:flex md:items-end md:justify-between md:gap-6">
+        <div className="max-w-xl">
+          <p className="eyebrow">Assigned in BLACKBOX</p>
+          <h1 className="mt-2 font-serif text-2xl tracking-wide text-brand-white sm:text-3xl">
+            {firstName}&rsquo;s files
+          </h1>
+          <p className="mt-2 text-sm text-brand-slate sm:text-base">
+            Pick a claim assigned to you, then start or continue the inspection.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="mt-4 hidden h-12 w-auto shrink-0 gap-2 md:inline-flex"
+          onClick={() => router.push("/inspections/new")}
+        >
+          <Plus className="h-4 w-4" />
+          First visit — open a file
+        </Button>
       </div>
 
       {error ? (
-        <div className="px-4">
+        <div className="px-4 sm:px-6">
           <ErrorBanner message={error} onDismiss={() => setError("")} />
         </div>
       ) : null}
 
       {fromCache ? (
-        <p className="px-4 pb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-brand-gold/80">
+        <p className="px-4 pb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-brand-gold/80 sm:px-6">
           Showing on-device cache
         </p>
       ) : null}
 
       {claims.length === 0 ? (
-        <p className="px-4 py-8 text-sm text-brand-slate">
+        <p className="px-4 py-8 text-sm text-brand-slate sm:px-6">
           No BLACKBOX files are assigned to you. If this is the first visit,
           open a new file on site.
         </p>
       ) : (
-        <ul className="divide-y divide-white/10 border-y border-white/10">
+        <ul className="grid gap-2 px-4 sm:px-6 md:grid-cols-2 xl:grid-cols-3">
           {claims.map((claim) => {
             const local = sessionByClaim.get(claim.id);
             const inProgress =
@@ -128,7 +138,7 @@ export function InspectionList() {
                   type="button"
                   onClick={() => void openClaim(claim)}
                   disabled={openingId === claim.id}
-                  className="flex w-full items-center gap-3 px-4 py-4 text-left touch-manipulation disabled:opacity-60"
+                  className="flex h-full w-full items-center gap-3 rounded-md border border-brand-white/10 bg-brand-navy-deep/40 px-4 py-4 text-left touch-manipulation hover:border-brand-gold/40 disabled:opacity-60"
                 >
                   <span
                     className={`h-10 w-1 shrink-0 ${
@@ -162,7 +172,7 @@ export function InspectionList() {
         </ul>
       )}
 
-      <div className="px-4 py-5">
+      <div className="px-4 py-5 sm:px-6 md:hidden">
         <Button
           variant="outline"
           className="h-12 w-full gap-2"
@@ -174,15 +184,15 @@ export function InspectionList() {
       </div>
 
       {sessions.length ? (
-        <div className="px-4 pb-8">
+        <div className="px-4 pb-8 sm:px-6">
           <p className="eyebrow mb-3">On this device</p>
-          <ul className="divide-y divide-white/10 border border-white/10">
+          <ul className="grid gap-2 md:grid-cols-2">
             {sessions.slice(0, 8).map((row) => (
               <li key={row.id}>
                 <button
                   type="button"
                   onClick={() => router.push(`/inspections/${row.id}`)}
-                  className="flex w-full items-center gap-3 px-3 py-3 text-left touch-manipulation"
+                  className="flex w-full items-center gap-3 rounded-md border border-brand-white/10 bg-brand-navy-deep/40 px-3 py-3 text-left touch-manipulation hover:border-brand-gold/40"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block font-mono text-sm text-brand-gold">

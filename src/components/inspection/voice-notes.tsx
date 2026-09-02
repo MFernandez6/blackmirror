@@ -83,7 +83,7 @@ export function VoiceNotes({
         type="button"
         onClick={toggle}
         disabled={!supported}
-        className="mt-2 inline-flex h-11 items-center gap-2 border border-white/15 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-gold disabled:opacity-40"
+        className="mt-2 inline-flex h-11 items-center gap-2 rounded-md border border-white/15 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-gold disabled:opacity-40"
       >
         {listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
         {supported

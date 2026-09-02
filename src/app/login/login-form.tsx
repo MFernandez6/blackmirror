@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { BlackmirrorMark } from "@/components/brand/blackmirror-mark";
+import { BlacklineMark } from "@/components/brand/blackline-mark";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -36,33 +37,35 @@ export default function LoginForm() {
 
   return (
     <div className="relative flex min-h-dvh flex-col items-center justify-center px-6 pb-safe">
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 70% 45% at 50% -10%, rgba(198,168,91,0.1), transparent)",
-        }}
-      />
-      <div className="relative w-full max-w-sm">
+      <div className="relative w-full max-w-sm md:max-w-md">
         <div className="mb-8 text-center">
-          <p className="eyebrow mb-4">BLACKBOX field module</p>
+          <p className="eyebrow mb-4">Field inspection</p>
           <BlackmirrorMark
             as="h1"
-            className="justify-center font-serif text-3xl font-bold tracking-[0.18em] text-brand-gold sm:text-4xl"
+            className="justify-center font-serif text-4xl font-bold tracking-[0.22em] text-brand-gold sm:text-5xl"
           />
           <p className="mt-4 text-sm leading-relaxed text-brand-white/80">
             Property inspection. Offline-first. Not a client portal.
           </p>
         </div>
 
-        <div className="mb-8 border border-white/10 bg-[#05070b] px-4 py-3 text-center">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-brand-slate">
+        <div className="mb-8 rounded-md border border-brand-white/10 bg-brand-navy-deep/40 px-4 py-6 text-center">
+          <p className="font-sans text-[9px] font-bold uppercase tracking-[0.2em] text-brand-slate">
             Operated for
           </p>
-          <p className="mt-1.5 font-serif text-xs font-semibold tracking-[0.14em] text-brand-white/85">
-            BLACKLINE PUBLIC ADJUSTERS LLC
-          </p>
+          <div className="mt-4 flex flex-col items-center">
+            <BlacklineMark size={52} className="text-brand-gold" />
+            <p className="mt-4 font-serif text-sm font-semibold tracking-[0.28em] text-brand-gold">
+              BLACKLINE
+            </p>
+            <div className="mt-2.5 h-px w-16 bg-brand-gold/70" />
+            <p className="mt-2.5 font-serif text-[9px] font-semibold uppercase tracking-[0.22em] text-brand-white/70">
+              Public Adjusters LLC
+            </p>
+          </div>
         </div>
+
+        <div className="hairline mb-8" />
 
         {error ? (
           <ErrorBanner message={error} onDismiss={() => setError("")} className="mb-6" />
@@ -90,10 +93,10 @@ export default function LoginForm() {
             />
           </div>
           <Button type="submit" variant="solid" className="w-full" disabled={busy}>
-            {busy ? "Authenticating…" : "Enter field"}
+            {busy ? "Authenticating…" : "Enter BLACKMIRROR™"}
           </Button>
         </form>
-        <p className="mt-8 text-center font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-slate">
+        <p className="mt-8 text-center font-sans text-[10px] font-bold uppercase tracking-[0.2em] text-brand-slate">
           Sign in while you have signal · session lasts 12h
         </p>
       </div>

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ClipboardList,
   FileText,
+  Trash2,
 } from "lucide-react";
 import {
   CATEGORY_META,
@@ -25,12 +26,12 @@ import {
   applyPresenceDefaults,
   getInspectionItems,
   getInspectionPhotos,
-  getItemPhotos,
   getLocalInspection,
   ensureChecklistItems,
   markItemsNotPresent,
   patchInspection,
   patchItem,
+  removeInspectionPhoto,
 } from "@/lib/offline/repo";
 import { runSync } from "@/lib/offline/sync";
 import type { LocalInspection, LocalItem, LocalPhoto } from "@/lib/offline/types";
@@ -105,6 +106,19 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
     await reload();
   }
 
+  async function removePhoto(photoId: string) {
+    if (
+      !window.confirm(
+        "Remove this photo from the inspection and the BLACKBOX vault?"
+      )
+    ) {
+      return;
+    }
+    await removeInspectionPhoto(photoId);
+    await reload();
+    void runSync();
+  }
+
   async function saveNarrative(text: string, finalize: boolean) {
     if (!inspection) return;
     await patchInspection(inspection.id, {
@@ -143,9 +157,36 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
     );
   }
 
+  const navItems = (
+    [
+      ["checklist", ClipboardList, "File"],
+      ["capture", Camera, "Photo"],
+      ["scope", FileText, "Scope"],
+      ["export", Check, "Export"],
+    ] as const
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-start gap-2 border-b border-white/10 px-3 py-3">
+    <div className="flex h-full min-h-0 flex-1 flex-col lg:flex-row">
+      <nav className="hidden w-24 shrink-0 flex-col border-r border-white/10 bg-brand-navy-deep/40 py-3 lg:flex">
+        {navItems.map(([id, Icon, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn(
+              "flex min-h-14 flex-col items-center justify-center gap-1 px-2 font-mono text-[9px] font-bold uppercase tracking-[0.16em] touch-manipulation",
+              tab === id ? "text-brand-gold" : "text-brand-slate hover:text-brand-white"
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex items-start gap-2 border-b border-white/10 px-3 py-3 sm:px-5">
         <button
           type="button"
           onClick={() => router.push("/inspections")}
@@ -207,8 +248,8 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
       ) : null}
 
       {tab === "capture" ? (
-        <div className="flex flex-1 flex-col overflow-y-auto pb-28">
-          <div className="px-4 py-4">
+        <div className="flex flex-1 flex-col overflow-y-auto pb-28 lg:pb-8">
+          <div className="mx-auto w-full max-w-2xl px-4 py-4 sm:px-6">
             <Button
               variant="solid"
               className="h-12 w-full"
@@ -231,6 +272,7 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
               setCaptureItemId(id);
               setCaptureOpen(true);
             }}
+            onDeletePhoto={(photoId) => void removePhoto(photoId)}
           />
         </div>
       ) : null}
@@ -258,12 +300,14 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
       {openItem ? (
         <ItemSheet
           item={openItem}
+          photos={photos.filter((p) => p.inspectionItemId === openItem.id)}
           onClose={() => setOpenItemId(null)}
           onChange={(patch) => void updateOpen(patch)}
           onCamera={() => {
             setCaptureItemId(openItem.id);
             setCaptureOpen(true);
           }}
+          onDeletePhoto={(photoId) => void removePhoto(photoId)}
         />
       ) : null}
 
@@ -282,16 +326,9 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
         />
       ) : null}
 
-      <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 border-t border-white/10 bg-[#05070b] pb-safe">
+      <nav className="sticky bottom-0 z-40 mt-auto border-t border-white/10 bg-brand-navy/95 pb-safe backdrop-blur-md lg:hidden">
         <div className="grid grid-cols-4">
-          {(
-            [
-              ["checklist", ClipboardList, "File"],
-              ["capture", Camera, "Photo"],
-              ["scope", FileText, "Scope"],
-              ["export", Check, "Export"],
-            ] as const
-          ).map(([id, Icon, label]) => (
+          {navItems.map(([id, Icon, label]) => (
             <button
               key={id}
               type="button"
@@ -307,6 +344,7 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
           ))}
         </div>
       </nav>
+      </div>
     </div>
   );
 }
@@ -315,10 +353,12 @@ function CaptureList({
   items,
   photos,
   onCapture,
+  onDeletePhoto,
 }: {
   items: LocalItem[];
   photos: LocalPhoto[];
   onCapture: (id: string) => void;
+  onDeletePhoto: (photoId: string) => void;
 }) {
   if (!items.length) {
     return (
@@ -328,24 +368,37 @@ function CaptureList({
     );
   }
   return (
-    <ul className="flex-1 overflow-y-auto pb-28">
+    <ul className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-0 lg:pb-0">
       {items.map((item) => {
         const def = INDICATOR_BY_TYPE[item.indicatorType];
-        const count = photos.filter((p) => p.inspectionItemId === item.id).length;
+        const shots = photos.filter((p) => p.inspectionItemId === item.id);
         return (
           <li
             key={item.id}
-            className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4"
+            className="border-b border-white/10 px-4 py-4"
           >
-            <div className="min-w-0">
-              <p className="text-sm">{def?.label}</p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-slate">
-                {count} photo{count === 1 ? "" : "s"}
-              </p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm">{def?.label}</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-slate">
+                  {shots.length} photo{shots.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <Button size="sm" onClick={() => onCapture(item.id)}>
+                Capture
+              </Button>
             </div>
-            <Button size="sm" onClick={() => onCapture(item.id)}>
-              Capture
-            </Button>
+            {shots.length ? (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {shots.map((photo) => (
+                  <PhotoThumb
+                    key={photo.id}
+                    photo={photo}
+                    onDelete={() => onDeletePhoto(photo.id)}
+                  />
+                ))}
+              </div>
+            ) : null}
           </li>
         );
       })}
@@ -355,30 +408,34 @@ function CaptureList({
 
 function ItemSheet({
   item,
+  photos,
   onClose,
   onChange,
   onCamera,
+  onDeletePhoto,
 }: {
   item: LocalItem;
+  photos: LocalPhoto[];
   onClose: () => void;
   onChange: (patch: Parameters<typeof patchItem>[1]) => void;
   onCamera: () => void;
+  onDeletePhoto: (photoId: string) => void;
 }) {
   const def = INDICATOR_BY_TYPE[item.indicatorType];
   const [notes, setNotes] = useState(item.notes ?? "");
   const [measurement, setMeasurement] = useState(
     item.measurementValue != null ? String(item.measurementValue) : ""
   );
-  const [itemPhotos, setItemPhotos] = useState<LocalPhoto[]>([]);
-
-  useEffect(() => {
-    void getItemPhotos(item.id).then(setItemPhotos);
-  }, [item.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/70">
-      <button className="h-16 w-full" type="button" onClick={onClose} aria-label="Close" />
-      <div className="max-h-[85dvh] overflow-y-auto border-t border-white/10 bg-[#05070b] px-4 pt-4 pb-safe">
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/70 md:items-center md:justify-center md:p-6"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[85dvh] w-full overflow-y-auto border-t border-brand-white/10 bg-brand-navy px-4 pt-4 pb-safe md:max-w-xl md:rounded-lg md:border md:shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
         <p className="eyebrow">{CATEGORY_META[item.category].label}</p>
         <h2 className="mt-1 font-serif text-xl tracking-wide">{def?.label}</h2>
         {def?.why ? (
@@ -390,7 +447,7 @@ function ItemSheet({
           </p>
         ) : null}
         {def?.denial ? (
-          <p className="mt-3 border border-denied/30 bg-denied-muted px-3 py-2 text-xs leading-relaxed text-denied-soft">
+          <p className="mt-3 rounded-md border border-denied/30 bg-denied-muted px-3 py-2 text-xs leading-relaxed text-denied-soft">
             <span className="font-mono text-[9px] font-bold uppercase tracking-[0.16em]">
               Carrier will argue
             </span>
@@ -406,7 +463,7 @@ function ItemSheet({
           </p>
         ) : null}
         {item.aiRationale ? (
-          <div className="mt-3 border border-brand-gold/25 p-3">
+          <div className="mt-3 rounded-md border border-brand-gold/25 p-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-gold">
               AI rationale {item.adjusterConfirmed ? "(confirmed)" : "(draft)"}
             </p>
@@ -444,7 +501,7 @@ function ItemSheet({
               type="button"
               onClick={() => onChange({ severity: s })}
               className={cn(
-                "h-11 font-mono text-[9px] font-bold uppercase tracking-[0.12em] touch-manipulation",
+                "h-11 rounded-md font-mono text-[9px] font-bold uppercase tracking-[0.12em] touch-manipulation",
                 item.severity === s
                   ? SEVERITY_META[s].className
                   : "border border-white/15 text-brand-slate"
@@ -463,7 +520,7 @@ function ItemSheet({
               type="button"
               onClick={() => onChange({ confidence: c })}
               className={cn(
-                "h-11 border font-mono text-[10px] font-bold uppercase tracking-[0.16em]",
+                "h-11 rounded-md border font-mono text-[10px] font-bold uppercase tracking-[0.16em]",
                 item.confidence === c
                   ? "border-brand-gold text-brand-gold"
                   : "border-white/15 text-brand-slate"
@@ -478,7 +535,7 @@ function ItemSheet({
           <label className="mt-5 block">
             <span className="eyebrow">Measurement ({def.unit})</span>
             <input
-              className="mt-2 h-12 w-full border border-white/15 bg-[#05070b] px-3 text-base"
+              className="mt-2 h-12 w-full rounded-md border border-brand-white/15 bg-brand-navy-deep/50 px-3 text-base"
               inputMode="decimal"
               value={measurement}
               onChange={(e) => setMeasurement(e.target.value)}
@@ -518,13 +575,14 @@ function ItemSheet({
           </Button>
         </div>
 
-        {itemPhotos.length ? (
+        {photos.length ? (
           <div className="mt-4 grid grid-cols-3 gap-2">
-            {itemPhotos.map((p) => (
-              <div key={p.id} className="aspect-square border border-white/10 bg-black">
-                {/* blob preview via object url when present */}
-                <PhotoThumb photo={p} />
-              </div>
+            {photos.map((p) => (
+              <PhotoThumb
+                key={p.id}
+                photo={p}
+                onDelete={() => onDeletePhoto(p.id)}
+              />
             ))}
           </div>
         ) : null}
@@ -540,7 +598,13 @@ function ItemSheet({
   );
 }
 
-function PhotoThumb({ photo }: { photo: LocalPhoto }) {
+function PhotoThumb({
+  photo,
+  onDelete,
+}: {
+  photo: LocalPhoto;
+  onDelete?: () => void;
+}) {
   const [src, setSrc] = useState<string | null>(photo.url || null);
   useEffect(() => {
     if (photo.blob) {
@@ -551,8 +615,23 @@ function PhotoThumb({ photo }: { photo: LocalPhoto }) {
   }, [photo.blob]);
   if (!src) return null;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="" className="h-full w-full object-cover" />
+    <div className="relative aspect-square overflow-hidden rounded-md border border-white/10 bg-black">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" className="h-full w-full object-cover" />
+      {onDelete ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-md border border-denied/40 bg-black/70 text-denied-soft touch-manipulation"
+          aria-label="Delete photo"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -568,7 +647,7 @@ function NarrativeEditor({
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto px-4 py-4 pb-28">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-4 py-4 pb-28 sm:px-6 lg:pb-8">
       <p className="eyebrow">Draft scope</p>
       <p className="mt-2 text-sm text-brand-slate">
         Generated from present indicators. Edit before you finalize.

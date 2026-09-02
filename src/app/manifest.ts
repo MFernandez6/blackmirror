@@ -8,9 +8,9 @@ export default function manifest(): MetadataRoute.Manifest {
       "Offline-first property inspection for BLACKBOX / Blackline Public Adjusters",
     start_url: "/inspections",
     display: "standalone",
-    background_color: "#05070b",
-    theme_color: "#05070b",
-    orientation: "portrait",
+    background_color: "#0F1C2E",
+    theme_color: "#0F1C2E",
+    orientation: "any",
     icons: [
       {
         src: "/icons/icon.svg",

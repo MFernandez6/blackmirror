@@ -18,14 +18,14 @@ const config: Config = {
     extend: {
       borderRadius: {
         none: "0",
-        sm: "0",
-        DEFAULT: "0",
-        md: "0",
-        lg: "0",
-        xl: "0",
-        "2xl": "0",
-        "3xl": "0",
-        full: "0",
+        sm: "4px",
+        DEFAULT: "6px",
+        md: "6px",
+        lg: "10px",
+        xl: "14px",
+        "2xl": "18px",
+        "3xl": "24px",
+        full: "9999px",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
@@ -70,16 +70,25 @@ const config: Config = {
           navy: "#0F1C2E",
           "navy-deep": "#020617",
           gold: "#C6A85B",
+          amber: "#E8B84A",
           white: "#F4F4F4",
           slate: "#8B95A5",
         },
-        ink: "#0F1C2E",
+        ink: {
+          DEFAULT: "#0F1C2E",
+          panel: "#020617",
+          raised: "#0a1624",
+        },
         paper: "#F4F4F4",
         hairline: "rgba(244, 244, 244, 0.12)",
         denied: {
           DEFAULT: "#E89090",
           soft: "#F5C4C4",
           muted: "rgba(232, 144, 144, 0.12)",
+        },
+        gate: {
+          open: "#E8B84A",
+          closed: "#C6A85B",
         },
         severity: {
           minor: "#3D7A4A",
@@ -97,6 +106,8 @@ const config: Config = {
         xl: "none",
         "2xl": "none",
         gold: "0 0 24px rgba(198, 168, 91, 0.08)",
+        amber: "0 0 28px rgba(232, 184, 74, 0.16)",
+        panel: "0 16px 48px rgba(2, 6, 23, 0.45)",
       },
       spacing: {
         safe: "env(safe-area-inset-bottom)",
@@ -114,9 +125,14 @@ const config: Config = {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        "gate-pulse": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.45" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.25s ease-out",
+        "gate-pulse": "gate-pulse 2.2s ease-in-out infinite",
       },
     },
   },

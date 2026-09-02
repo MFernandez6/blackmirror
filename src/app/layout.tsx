@@ -48,8 +48,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 5,
   viewportFit: "cover",
-  themeColor: "#05070b",
+  themeColor: "#0F1C2E",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
@@ -60,7 +62,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${inter.variable} ${jetbrains.variable} ${cinzel.variable} bg-[#05070b] text-brand-white antialiased`}
+        className={`${inter.variable} ${jetbrains.variable} ${cinzel.variable} bg-brand-navy text-brand-white antialiased`}
       >
         <Providers>
           <RegisterSW />

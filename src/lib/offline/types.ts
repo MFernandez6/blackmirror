@@ -164,7 +164,8 @@ export type OutboxOp =
   | "upsert-photo-meta"
   | "upload-photo"
   | "analyze-photo"
-  | "commit-photo";
+  | "commit-photo"
+  | "delete-photo";
 
 export type OutboxEntry = {
   id: string;

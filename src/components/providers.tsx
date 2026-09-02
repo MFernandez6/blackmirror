@@ -14,11 +14,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
           position="top-center"
           toastOptions={{
             style: {
-              background: "#05070b",
+              background: "#0F1C2E",
               border: "1px solid rgba(198, 168, 91, 0.35)",
-              borderRadius: 0,
+              borderRadius: 6,
               color: "#F4F4F4",
-              fontFamily: "var(--font-mono)",
+              fontFamily: "var(--font-sans)",
               fontSize: "11px",
               fontWeight: 700,
               letterSpacing: "0.16em",

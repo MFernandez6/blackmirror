@@ -1,4 +1,5 @@
 import {
+  defaultSkippedCoverages,
   indicatorsForPeril,
   type IndicatorDef,
   type Confidence,
@@ -141,7 +142,7 @@ export async function startLocalInspection(opts: {
     narrativeFinal: null,
     sessionId: null,
     customLocations: [],
-    skippedCoverages: [],
+    skippedCoverages: defaultSkippedCoverages(),
     skippedSystems: [],
     clientRev: 1,
     dirty: true,
@@ -450,6 +451,22 @@ export async function deleteLocalPhoto(id: string) {
   await db.photos.delete(id);
   const leftover = await db.outbox.where("entityId").equals(id).toArray();
   await Promise.all(leftover.map((e) => db.outbox.delete(e.id)));
+}
+
+/** Remove a filed or pending photo locally and queue a vault delete. */
+export async function removeInspectionPhoto(id: string) {
+  const db = getDb();
+  const leftover = await db.outbox.where("entityId").equals(id).toArray();
+  await Promise.all(leftover.map((e) => db.outbox.delete(e.id)));
+  await enqueue("delete-photo", id);
+  await db.photos.delete(id);
+}
+
+export async function listPendingPhotoDeletes() {
+  return getDb()
+    .outbox.where("op")
+    .equals("delete-photo")
+    .toArray();
 }
 
 export async function pendingOutboxCount() {

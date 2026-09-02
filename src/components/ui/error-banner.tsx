@@ -15,7 +15,7 @@ export function ErrorBanner({ message, onDismiss, className }: ErrorBannerProps)
     <div
       role="alert"
       className={cn(
-        "flex items-start justify-between gap-4 border border-denied/40 bg-denied-muted px-4 py-3 text-sm text-denied-soft",
+        "flex items-start justify-between gap-4 rounded-md border border-denied/40 bg-denied-muted px-4 py-3 text-sm text-denied-soft",
         className
       )}
     >
