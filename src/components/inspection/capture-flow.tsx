@@ -30,7 +30,9 @@ import {
   savePhotoAnalysis,
 } from "@/lib/offline/repo";
 import { runSync } from "@/lib/offline/sync";
+import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
 import type { AiDraft, LocalPhoto, ReferenceMatch } from "@/lib/offline/types";
+import { DefenseDraft } from "@/components/inspection/defense-draft";
 import { getCurrentPosition } from "@/lib/inspection/geo";
 import { cn } from "@/lib/utils";
 
@@ -130,6 +132,8 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
     try {
       const form = new FormData();
       form.set("file", photo.blob!, `${photo.id}.jpg`);
+      const inspection = await getLocalInspection(inspectionId);
+      if (inspection?.perilTemplate) form.set("peril", inspection.perilTemplate);
       const res = await fetch("/api/analyze-photo", { method: "POST", body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -142,7 +146,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
       await savePhotoAnalysis(photo.id, data.analysis, data.references);
       setIndicatorType(itemId ? indicatorType || data.analysis.indicatorType : data.analysis.indicatorType);
       setSeverity(data.analysis.estimatedSeverity);
-      setDescription(data.analysis.visualRationale);
+      setDescription(formatDefenseDraft(data.analysis));
       setPhoto({
         ...photo,
         analysis: data.analysis,
@@ -184,7 +188,10 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
       form.set("category", INDICATOR_BY_TYPE[indicatorType]?.category ?? "");
       form.set("severity", severity);
       form.set("confidence", photo.analysis?.confidence ?? "SUSPECTED");
-      form.set("aiRationale", photo.analysis?.visualRationale ?? "");
+      form.set(
+        "aiRationale",
+        photo.analysis ? formatDefenseDraft(photo.analysis) : ""
+      );
       form.set("aiSuggestedIndicator", photo.analysis?.indicatorType ?? "");
       form.set(
         "similarReferenceIds",
@@ -225,7 +232,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
         adjusterConfirmed: true,
         adjusterFinalCategory: INDICATOR_BY_TYPE[indicatorType]?.category ?? null,
         aiSuggestedIndicator: photo.analysis?.indicatorType ?? null,
-        aiRationale: photo.analysis?.visualRationale ?? null,
+        aiRationale: photo.analysis ? formatDefenseDraft(photo.analysis) : null,
       });
       toast("Filed to BLACKBOX vault");
       await onComplete();
@@ -369,11 +376,11 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
     <div className="fixed inset-0 z-[60] flex flex-col bg-brand-navy md:items-center">
       <div className="flex h-full w-full max-w-2xl flex-col">
       <div className="px-4 py-3 pt-safe">
-        <p className="eyebrow">AI suggestion — not a determination</p>
+        <p className="eyebrow">Claude draft — not a determination</p>
         <h2 className="mt-1 font-serif text-xl">Review & confirm</h2>
         <p className="mt-2 text-xs text-brand-slate">
-          Licensed adjuster confirms. The file records both the model output and your
-          adopted finding.
+          Same Anthropic model as policy parse. It drafts an affirmative defense and
+          a rebuttal to the likely denial for you to edit into the file.
         </p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pb-28">
@@ -383,10 +390,12 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
               Suggested {CATEGORY_META[analysis.category].label} /{" "}
               {INDICATOR_BY_TYPE[analysis.indicatorType]?.label}
             </p>
-            <p className="mt-2 text-sm">{analysis.visualRationale}</p>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand-slate">
               {analysis.confidence} · {SEVERITY_META[analysis.estimatedSeverity].label}
             </p>
+            <div className="mt-3">
+              <DefenseDraft analysis={analysis} />
+            </div>
           </div>
         ) : null}
 
@@ -448,7 +457,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
           ))}
         </div>
 
-        <p className="eyebrow mt-5 mb-2">Description (editable)</p>
+        <p className="eyebrow mt-5 mb-2">Drafting notes (editable)</p>
         <Textarea
           className="min-h-[140px]"
           value={description}

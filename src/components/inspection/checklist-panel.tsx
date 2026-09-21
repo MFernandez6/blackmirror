@@ -15,7 +15,8 @@ import {
   type Presence,
   type Severity,
 } from "@/lib/inspection/indicators";
-import type { LocalItem, LocalPhoto } from "@/lib/offline/types";
+import type { AiDraft, LocalItem, LocalPhoto } from "@/lib/offline/types";
+import { DefenseDraft } from "@/components/inspection/defense-draft";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -295,14 +296,18 @@ export function ChecklistPanel({
                           <ul>
                             {rows.map((item) => {
                               const def = INDICATOR_BY_TYPE[item.indicatorType];
-                              const photoCount = photos.filter(
+                              const itemPhotos = photos.filter(
                                 (p) => p.inspectionItemId === item.id
-                              ).length;
+                              );
+                              const analysis =
+                                itemPhotos.find((p) => p.analysis)?.analysis ??
+                                undefined;
                               return (
                                 <ChecklistRow
                                   key={item.id}
                                   item={item}
-                                  photoCount={photoCount}
+                                  photoCount={itemPhotos.length}
+                                  analysis={analysis}
                                   onPresence={onPresence}
                                   onOpen={onOpen}
                                   prompt={def?.prompt}
@@ -342,6 +347,7 @@ export function ChecklistPanel({
 function ChecklistRow({
   item,
   photoCount,
+  analysis,
   onPresence,
   onOpen,
   label,
@@ -351,6 +357,7 @@ function ChecklistRow({
 }: {
   item: LocalItem;
   photoCount: number;
+  analysis?: AiDraft;
   onPresence: (item: LocalItem, presence: Presence) => void;
   onOpen: (item: LocalItem) => void;
   label: string;
@@ -444,7 +451,12 @@ function ChecklistRow({
               <span className="mt-0.5 block">{why}</span>
             </p>
           ) : null}
-          {denial ? (
+          {analysis ? (
+            <DefenseDraft
+              analysis={analysis}
+              confirmed={item.adjusterConfirmed}
+            />
+          ) : denial ? (
             <p className="rounded-md border border-denied/30 bg-denied-muted px-3 py-2 text-[11px] leading-relaxed text-denied-soft">
               <span className="font-mono text-[9px] font-bold uppercase tracking-[0.16em]">
                 Carrier will argue

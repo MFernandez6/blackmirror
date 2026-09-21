@@ -14,6 +14,7 @@ import {
   savePhotoAnalysis,
   getLocalInspection,
 } from "./repo";
+import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
 import type {
   AiDraft,
   CachedClaim,
@@ -137,6 +138,8 @@ async function processCaptureQueue(): Promise<void> {
     if (!photo.analysis) {
       const form = new FormData();
       form.set("file", photo.blob, `${photo.id}.jpg`);
+      const parent = await getLocalInspection(photo.inspectionId);
+      if (parent?.perilTemplate) form.set("peril", parent.perilTemplate);
       const res = await fetch("/api/analyze-photo", { method: "POST", body: form });
       if (!res.ok) {
         const text = await res.text().catch(() => res.statusText);
@@ -164,14 +167,14 @@ async function processCaptureQueue(): Promise<void> {
     if (fresh.customReasonText) commit.set("customReasonText", fresh.customReasonText);
     commit.set(
       "description",
-      fresh.adjusterEditedDescription || analysis.visualRationale
+      fresh.adjusterEditedDescription || formatDefenseDraft(analysis)
     );
     commit.set("adjusterConfirmed", "false");
     commit.set("indicatorType", analysis.indicatorType);
     commit.set("category", analysis.category);
     commit.set("severity", analysis.estimatedSeverity);
     commit.set("confidence", analysis.confidence);
-    commit.set("aiRationale", analysis.visualRationale);
+    commit.set("aiRationale", formatDefenseDraft(analysis));
     commit.set("aiSuggestedIndicator", analysis.indicatorType);
     commit.set(
       "similarReferenceIds",

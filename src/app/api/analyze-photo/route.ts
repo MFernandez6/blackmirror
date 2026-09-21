@@ -29,9 +29,11 @@ export async function POST(req: Request) {
   }
 
   try {
+    const peril = String(form.get("peril") ?? "").trim() || null;
     const analysis = await analyzeInspectionPhoto({
       bytes,
       mimeType: file.type || "image/jpeg",
+      peril,
     });
     const query = [
       analysis.category,

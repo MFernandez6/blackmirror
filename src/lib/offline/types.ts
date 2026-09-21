@@ -44,6 +44,9 @@ export type AiDraft = {
   confidence: Confidence;
   estimatedSeverity: Severity;
   visualRationale: string;
+  likelyDenial?: string;
+  affirmativeDefense?: string;
+  denialRebuttal?: string;
 };
 
 export type ReferenceMatch = {

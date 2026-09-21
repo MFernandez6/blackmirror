@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CaptureFlow } from "@/components/inspection/capture-flow";
+import { DefenseDraft } from "@/components/inspection/defense-draft";
 import { VoiceNotes } from "@/components/inspection/voice-notes";
 import { ExportPanel } from "@/components/inspection/export-panel";
 import { ChecklistPanel } from "@/components/inspection/checklist-panel";
@@ -426,6 +427,7 @@ function ItemSheet({
   const [measurement, setMeasurement] = useState(
     item.measurementValue != null ? String(item.measurementValue) : ""
   );
+  const analyzedPhotos = photos.filter((p) => p.analysis);
 
   return (
     <div
@@ -446,7 +448,7 @@ function ItemSheet({
             <span className="mt-1 block">{def.why}</span>
           </p>
         ) : null}
-        {def?.denial ? (
+        {analyzedPhotos.length === 0 && def?.denial ? (
           <p className="mt-3 rounded-md border border-denied/30 bg-denied-muted px-3 py-2 text-xs leading-relaxed text-denied-soft">
             <span className="font-mono text-[9px] font-bold uppercase tracking-[0.16em]">
               Carrier will argue
@@ -462,19 +464,59 @@ function ItemSheet({
             <span className="mt-1 block">{def.photo}</span>
           </p>
         ) : null}
-        {item.aiRationale ? (
+        {analyzedPhotos.length ? (
+          <div className="mt-3 space-y-4">
+            {analyzedPhotos.map((p) =>
+              p.analysis ? (
+                <div
+                  key={p.id}
+                  className="rounded-md border border-brand-gold/25 p-3"
+                >
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-gold">
+                    Claude drafting notes{" "}
+                    {item.adjusterConfirmed ? "(confirmed)" : "(draft)"}
+                  </p>
+                  <div className="mt-2">
+                    <DefenseDraft
+                      analysis={p.analysis}
+                      confirmed={item.adjusterConfirmed}
+                    />
+                  </div>
+                  {item.aiSuggestedIndicator &&
+                  item.aiSuggestedIndicator !== item.indicatorType ? (
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand-slate">
+                      Model suggested {item.aiSuggestedIndicator}; adjuster
+                      adopted {item.indicatorType}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null
+            )}
+            {!item.adjusterConfirmed ? (
+              <Button
+                variant="solid"
+                className="h-11 w-full"
+                onClick={() =>
+                  onChange({
+                    adjusterConfirmed: true,
+                    adjusterFinalCategory: item.category,
+                    presence: "PRESENT",
+                  })
+                }
+              >
+                Confirm finding
+              </Button>
+            ) : null}
+          </div>
+        ) : item.aiRationale ? (
           <div className="mt-3 rounded-md border border-brand-gold/25 p-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-gold">
-              AI rationale {item.adjusterConfirmed ? "(confirmed)" : "(draft)"}
+              Claude drafting notes{" "}
+              {item.adjusterConfirmed ? "(confirmed)" : "(draft)"}
             </p>
-            <p className="mt-1 text-xs text-brand-white/85">{item.aiRationale}</p>
-            {item.aiSuggestedIndicator &&
-            item.aiSuggestedIndicator !== item.indicatorType ? (
-              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand-slate">
-                Model suggested {item.aiSuggestedIndicator}; adjuster adopted{" "}
-                {item.indicatorType}
-              </p>
-            ) : null}
+            <p className="mt-1 whitespace-pre-wrap text-xs text-brand-white/85">
+              {item.aiRationale}
+            </p>
             {!item.adjusterConfirmed ? (
               <Button
                 variant="solid"

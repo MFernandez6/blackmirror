@@ -13,6 +13,7 @@ export type NarrativeItem = {
   notes: string | null;
   measurementValue: number | string | null;
   measurementUnit: string | null;
+  aiRationale?: string | null;
 };
 
 function fill(template: string, item: NarrativeItem): string {
@@ -73,6 +74,20 @@ export function generateNarrative(opts: {
       const def = INDICATOR_BY_TYPE[item.indicatorType];
       if (!def) continue;
       lines.push(`• ${fill(def.narrative, item)}`);
+    }
+  }
+
+  const withDraft = present.filter((i) => i.aiRationale?.trim());
+  if (withDraft.length) {
+    lines.push("");
+    lines.push(
+      "DRAFTING NOTES (Claude — review before use in demand, LOR, or correspondence)"
+    );
+    for (const item of withDraft) {
+      const def = INDICATOR_BY_TYPE[item.indicatorType];
+      if (!def || !item.aiRationale) continue;
+      lines.push(`• ${def.label}`);
+      lines.push(item.aiRationale.trim());
     }
   }
 
