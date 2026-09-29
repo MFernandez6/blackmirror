@@ -30,6 +30,7 @@ import {
   savePhotoAnalysis,
 } from "@/lib/offline/repo";
 import { runSync } from "@/lib/offline/sync";
+import { analysisImage } from "@/lib/inspection/capture";
 import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
 import type { AiDraft, LocalPhoto, ReferenceMatch } from "@/lib/offline/types";
 import { DefenseDraft } from "@/components/inspection/defense-draft";
@@ -131,7 +132,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
     setAnalyzing(true);
     try {
       const form = new FormData();
-      form.set("file", photo.blob!, `${photo.id}.jpg`);
+      form.set("file", await analysisImage(photo.blob!), `${photo.id}.jpg`);
       const inspection = await getLocalInspection(inspectionId);
       if (inspection?.perilTemplate) form.set("peril", inspection.perilTemplate);
       const res = await fetch("/api/analyze-photo", { method: "POST", body: form });

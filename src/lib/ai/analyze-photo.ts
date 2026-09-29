@@ -10,7 +10,8 @@ import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
 
 export { formatDefenseDraft };
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+/** Haiku keeps per-photo cost low; set ANTHROPIC_PHOTO_MODEL=claude-sonnet-4-6 for heavier files. */
+const DEFAULT_MODEL = "claude-haiku-4-5";
 const RETIRED_MODELS = new Set([
   "claude-sonnet-4-20250514",
   "claude-sonnet-4-0",
@@ -18,7 +19,7 @@ const RETIRED_MODELS = new Set([
 ]);
 
 function resolveModel(): string {
-  const raw = (process.env.ANTHROPIC_POLICY_MODEL || "").trim();
+  const raw = (process.env.ANTHROPIC_PHOTO_MODEL || "").trim();
   if (!raw || RETIRED_MODELS.has(raw) || raw === "[SENSITIVE]") {
     return DEFAULT_MODEL;
   }
@@ -118,7 +119,9 @@ export async function analyzeInspectionPhoto(opts: {
     message = await client.messages.create({
       model,
       max_tokens: 2048,
-      system: SYSTEM,
+      system: [
+        { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
+      ],
       messages: [
         {
           role: "user",

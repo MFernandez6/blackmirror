@@ -15,6 +15,7 @@ import {
   getLocalInspection,
 } from "./repo";
 import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
+import { analysisImage } from "@/lib/inspection/capture";
 import type {
   AiDraft,
   CachedClaim,
@@ -137,7 +138,7 @@ async function processCaptureQueue(): Promise<void> {
 
     if (!photo.analysis) {
       const form = new FormData();
-      form.set("file", photo.blob, `${photo.id}.jpg`);
+      form.set("file", await analysisImage(photo.blob), `${photo.id}.jpg`);
       const parent = await getLocalInspection(photo.inspectionId);
       if (parent?.perilTemplate) form.set("peril", parent.perilTemplate);
       const res = await fetch("/api/analyze-photo", { method: "POST", body: form });

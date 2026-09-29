@@ -90,6 +90,37 @@ export async function blobToJpeg(
   });
 }
 
+/** Claude downsamples past 1568px anyway; send a smaller copy for analysis, keep the original for the vault. */
+const ANALYSIS_MAX_EDGE = 1568;
+
+export async function analysisImage(blob: Blob): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const longEdge = Math.max(bitmap.width, bitmap.height);
+    if (longEdge <= ANALYSIS_MAX_EDGE) {
+      bitmap.close();
+      return blob;
+    }
+    const scale = ANALYSIS_MAX_EDGE / longEdge;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return blob;
+    }
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const small = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.85)
+    );
+    return small ?? blob;
+  } catch {
+    return blob;
+  }
+}
+
 export function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
