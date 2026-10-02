@@ -22,7 +22,7 @@ export function FieldShell({ user, children }: Props) {
               href="/inspections"
               className="flex min-w-0 items-center gap-3 touch-manipulation"
             >
-              <BlacklineMark size={32} className="text-brand-gold" />
+              <BlacklineMark size={28} />
               <span className="min-w-0">
                 <BlackmirrorMark className="font-serif text-xl font-bold tracking-[0.2em] text-brand-gold sm:text-2xl" />
                 <span className="mt-1.5 block font-sans text-[9px] font-bold uppercase tracking-[0.18em] text-brand-slate">

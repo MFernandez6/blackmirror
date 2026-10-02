@@ -3,7 +3,7 @@ import { BlacklineMark } from "@/components/brand/blackline-mark";
 export default function OfflinePage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
-      <BlacklineMark size={44} className="mb-5 text-brand-gold" />
+      <BlacklineMark size={44} className="mb-5" />
       <p className="eyebrow">No network</p>
       <h1 className="mt-3 font-serif text-2xl text-brand-gold">Cached shell</h1>
       <p className="mt-3 max-w-sm text-sm text-brand-slate">

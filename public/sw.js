@@ -1,5 +1,5 @@
-const CACHE = "blackmirror-v1";
-const PRECACHE = ["/offline", "/login", "/inspections", "/icons/icon.svg"];
+const CACHE = "blackmirror-v2";
+const PRECACHE = ["/offline", "/login", "/inspections", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

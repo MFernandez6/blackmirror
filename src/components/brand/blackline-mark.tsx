@@ -1,58 +1,68 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-const DIDOT_B =
-  "M37.73 40.46V16.33Q38.59 16.25 39.45 16.17Q40.30 16.09 41.16 16.09Q44.13 16.09 46.04 16.87Q47.96 17.66 49.05 19.26Q50.15 20.86 50.61 23.32Q51.08 25.78 51.08 29.21Q51.08 31.32 50.81 33.35Q50.54 35.38 49.52 36.99Q48.51 38.59 46.47 39.52Q44.44 40.46 40.93 40.46ZM37.73 69.75V41.56H42.26Q46.16 41.56 48.31 43.16Q50.46 44.76 51.51 46.94Q52.57 49.13 52.80 51.36Q53.04 53.58 53.04 54.91Q53.04 59.68 52.29 62.60Q51.55 65.53 50.15 67.17Q48.74 68.81 46.75 69.40Q44.76 69.98 42.26 69.98Q39.84 69.98 37.73 69.75ZM26.40 16.33V69.75H19.22V70.84H31.01Q34.29 70.84 37.53 70.92Q40.77 71.00 44.05 71.00Q47.02 71.00 50.77 70.34Q54.52 69.67 57.84 67.95Q61.16 66.24 63.46 63.27Q65.77 60.30 65.77 55.77Q65.77 51.63 63.97 48.90Q62.17 46.16 59.44 44.48Q56.71 42.80 53.43 42.02Q50.15 41.24 47.10 41.01V40.70Q48.97 40.46 51.67 39.68Q54.36 38.90 56.86 37.42Q59.36 35.93 61.12 33.63Q62.88 31.32 62.88 27.97Q62.88 24.22 61.08 21.72Q59.28 19.22 56.51 17.73Q53.74 16.25 50.38 15.62Q47.02 15.00 43.98 15.00Q40.69 15.00 37.49 15.12Q34.29 15.23 31.01 15.23H19.22V16.33Z";
+const MARK = { src: "/brand/blackline-mark.png", width: 626, height: 272 };
+const LOGO = { src: "/brand/blackline-logo.png", width: 812, height: 479 };
+const SEAL = { src: "/brand/blackline-seal.png", width: 740, height: 742 };
 
-const DIDOT_L =
-  "M71.27 15.23V16.33H78.45V69.75H71.27V70.84H120.78V53.19H119.77Q118.75 57.72 116.92 60.89Q115.08 64.05 112.78 66.04Q110.47 68.03 107.86 68.89Q105.24 69.75 102.66 69.75H89.78V16.33H96.96V15.23Z";
+const FIRM = "Blackline Public Adjusters";
 
-const VIEW_W = 140;
-const VIEW_H = 86;
-
-type Props = {
-  size?: number;
-  className?: string;
-  title?: string;
-};
-
-/** Didot BL monogram in a double gold cartouche. `size` is height. */
+/** Gold B with the horizon line. `size` is the rendered height in px. */
 export function BlacklineMark({
   size = 40,
   className,
-  title = "Blackline Public Adjusters",
-}: Props) {
-  const height = size;
-  const width = Math.round((size * VIEW_W) / VIEW_H);
+  title = FIRM,
+}: {
+  size?: number;
+  className?: string;
+  title?: string;
+}) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-      width={width}
-      height={height}
-      className={cn("shrink-0", className)}
-      role="img"
-      aria-label={title}
-    >
-      <rect
-        x="3.5"
-        y="3.5"
-        width="133"
-        height="79"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.1"
-      />
-      <rect
-        x="6.8"
-        y="6.8"
-        width="126.4"
-        height="72.4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="0.35"
-      />
-      <path fill="currentColor" d={DIDOT_B} />
-      <path fill="currentColor" d={DIDOT_L} />
-    </svg>
+    <Image
+      src={MARK.src}
+      alt={title}
+      width={Math.round((size * MARK.width) / MARK.height)}
+      height={size}
+      className={cn("shrink-0 select-none", className)}
+    />
+  );
+}
+
+/** Full lockup: B mark over BLACKLINE / PUBLIC ADJUSTERS LLC. Size with a width class. */
+export function BlacklineLogo({
+  className,
+  priority,
+}: {
+  className?: string;
+  priority?: boolean;
+}) {
+  return (
+    <Image
+      src={LOGO.src}
+      alt={`${FIRM} LLC`}
+      width={LOGO.width}
+      height={LOGO.height}
+      priority={priority}
+      className={cn("h-auto select-none", className)}
+    />
+  );
+}
+
+/** Round firm seal. `size` is the rendered diameter in px. */
+export function BlacklineSeal({
+  size = 96,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <Image
+      src={SEAL.src}
+      alt={`${FIRM} LLC seal`}
+      width={size}
+      height={Math.round((size * SEAL.height) / SEAL.width)}
+      className={cn("shrink-0 select-none", className)}
+    />
   );
 }

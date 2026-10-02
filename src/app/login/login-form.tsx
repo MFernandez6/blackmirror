@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { BlackmirrorMark } from "@/components/brand/blackmirror-mark";
-import { BlacklineMark } from "@/components/brand/blackline-mark";
+import { BlacklineLogo } from "@/components/brand/blackline-mark";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -53,16 +53,7 @@ export default function LoginForm() {
           <p className="font-sans text-[9px] font-bold uppercase tracking-[0.2em] text-brand-slate">
             Operated for
           </p>
-          <div className="mt-4 flex flex-col items-center">
-            <BlacklineMark size={52} className="text-brand-gold" />
-            <p className="mt-4 font-serif text-sm font-semibold tracking-[0.28em] text-brand-gold">
-              BLACKLINE
-            </p>
-            <div className="mt-2.5 h-px w-16 bg-brand-gold/70" />
-            <p className="mt-2.5 font-serif text-[9px] font-semibold uppercase tracking-[0.22em] text-brand-white/70">
-              Public Adjusters LLC
-            </p>
-          </div>
+          <BlacklineLogo className="mx-auto mt-4 w-44" priority />
         </div>
 
         <div className="hairline mb-8" />
