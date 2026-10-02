@@ -40,15 +40,15 @@ export function ExportPanel({
         adopted narrative. Generation runs on-device so it works offline.
       </p>
       <dl className="mt-6 space-y-2 font-mono text-[11px] uppercase tracking-[0.16em] text-brand-slate">
-        <div className="flex justify-between border-b border-white/10 py-2">
+        <div className="flex justify-between border-b border-brand-white/10 py-2">
           <dt>Claim</dt>
           <dd className="text-brand-gold">{inspection.claimNumber}</dd>
         </div>
-        <div className="flex justify-between border-b border-white/10 py-2">
+        <div className="flex justify-between border-b border-brand-white/10 py-2">
           <dt>Photos</dt>
           <dd className="text-brand-white">{photos.length}</dd>
         </div>
-        <div className="flex justify-between border-b border-white/10 py-2">
+        <div className="flex justify-between border-b border-brand-white/10 py-2">
           <dt>Status</dt>
           <dd className="text-brand-white">{inspection.status}</dd>
         </div>

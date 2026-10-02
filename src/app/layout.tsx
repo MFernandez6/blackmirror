@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono, Cinzel } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { RegisterSW } from "@/components/pwa/register-sw";
 import "./globals.css";
+import { themeInitScript } from "@/lib/theme-script";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -53,7 +54,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${inter.variable} ${jetbrains.variable} ${cinzel.variable} bg-brand-navy text-brand-white antialiased`}
       >

@@ -140,7 +140,7 @@ export function StartInspection() {
         office.
       </p>
 
-      <div className="mt-5 rounded-md border border-brand-gold/30 bg-brand-gold/10 px-3 py-3">
+      <div className="mt-5 rounded-2xl border border-brand-gold/30 bg-brand-gold/10 px-3 py-3">
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-brand-slate">
           Next BLACKLINE number
         </p>
@@ -264,7 +264,7 @@ export function StartInspection() {
             className={`h-11 rounded-md border font-sans text-[10px] font-bold uppercase tracking-[0.16em] touch-manipulation ${
               peril === p
                 ? "border-brand-gold bg-brand-gold/15 text-brand-gold"
-                : "border-white/15 text-brand-slate"
+                : "border-brand-white/15 text-brand-slate"
             }`}
           >
             {p}
@@ -277,7 +277,7 @@ export function StartInspection() {
           type="checkbox"
           checked={isCatClaim}
           onChange={(e) => setIsCatClaim(e.target.checked)}
-          className="h-4 w-4 accent-[#c6a85b]"
+          className="h-4 w-4 accent-brand-gold"
         />
         <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-slate">
           CAT / declared event

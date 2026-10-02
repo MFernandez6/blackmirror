@@ -169,7 +169,7 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col lg:flex-row">
-      <nav className="hidden w-24 shrink-0 flex-col border-r border-white/10 bg-brand-navy-deep/40 py-3 lg:flex">
+      <nav className="hidden w-24 shrink-0 flex-col border-r border-brand-white/10 bg-brand-navy/60 py-3 lg:flex">
         {navItems.map(([id, Icon, label]) => (
           <button
             key={id}
@@ -187,7 +187,7 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
       </nav>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex items-start gap-2 border-b border-white/10 px-3 py-3 sm:px-5">
+      <div className="flex items-start gap-2 border-b border-brand-white/10 px-3 py-3 sm:px-5">
         <button
           type="button"
           onClick={() => router.push("/inspections")}
@@ -327,7 +327,7 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
         />
       ) : null}
 
-      <nav className="sticky bottom-0 z-40 mt-auto border-t border-white/10 bg-brand-navy/95 pb-safe backdrop-blur-md lg:hidden">
+      <nav className="sticky bottom-0 z-40 mt-auto border-t border-brand-white/10 bg-brand-navy/95 pb-safe backdrop-blur-md lg:hidden">
         <div className="grid grid-cols-4">
           {navItems.map(([id, Icon, label]) => (
             <button
@@ -376,7 +376,7 @@ function CaptureList({
         return (
           <li
             key={item.id}
-            className="border-b border-white/10 px-4 py-4"
+            className="border-b border-brand-white/10 px-4 py-4"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -435,7 +435,7 @@ function ItemSheet({
       onClick={onClose}
     >
       <div
-        className="max-h-[85dvh] w-full overflow-y-auto border-t border-brand-white/10 bg-brand-navy px-4 pt-4 pb-safe md:max-w-xl md:rounded-lg md:border md:shadow-panel"
+        className="max-h-[85dvh] w-full overflow-y-auto border-t border-brand-white/10 bg-brand-navy px-4 pt-4 pb-safe md:max-w-xl md:rounded-2xl md:border md:border-brand-gold/15"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="eyebrow">{CATEGORY_META[item.category].label}</p>
@@ -470,7 +470,7 @@ function ItemSheet({
               p.analysis ? (
                 <div
                   key={p.id}
-                  className="rounded-md border border-brand-gold/25 p-3"
+                  className="rounded-2xl border border-brand-gold/25 p-3"
                 >
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-gold">
                     Claude drafting notes{" "}
@@ -509,7 +509,7 @@ function ItemSheet({
             ) : null}
           </div>
         ) : item.aiRationale ? (
-          <div className="mt-3 rounded-md border border-brand-gold/25 p-3">
+          <div className="mt-3 rounded-2xl border border-brand-gold/25 p-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand-gold">
               Claude drafting notes{" "}
               {item.adjusterConfirmed ? "(confirmed)" : "(draft)"}
@@ -546,7 +546,7 @@ function ItemSheet({
                 "h-11 rounded-md font-mono text-[9px] font-bold uppercase tracking-[0.12em] touch-manipulation",
                 item.severity === s
                   ? SEVERITY_META[s].className
-                  : "border border-white/15 text-brand-slate"
+                  : "border border-brand-white/15 text-brand-slate"
               )}
             >
               {SEVERITY_META[s].label}
@@ -565,7 +565,7 @@ function ItemSheet({
                 "h-11 rounded-md border font-mono text-[10px] font-bold uppercase tracking-[0.16em]",
                 item.confidence === c
                   ? "border-brand-gold text-brand-gold"
-                  : "border-white/15 text-brand-slate"
+                  : "border-brand-white/15 text-brand-slate"
               )}
             >
               {c}
@@ -577,7 +577,7 @@ function ItemSheet({
           <label className="mt-5 block">
             <span className="eyebrow">Measurement ({def.unit})</span>
             <input
-              className="mt-2 h-12 w-full rounded-md border border-brand-white/15 bg-brand-navy-deep/50 px-3 text-base"
+              className="mt-2 h-12 w-full rounded-xl border border-brand-white/10 bg-brand-navy/50 px-3 transition-colors focus:border-brand-gold text-base"
               inputMode="decimal"
               value={measurement}
               onChange={(e) => setMeasurement(e.target.value)}
@@ -657,7 +657,7 @@ function PhotoThumb({
   }, [photo.blob]);
   if (!src) return null;
   return (
-    <div className="relative aspect-square overflow-hidden rounded-md border border-white/10 bg-black">
+    <div className="relative aspect-square overflow-hidden rounded-xl border border-brand-gold/15 bg-black">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt="" className="h-full w-full object-cover" />
       {onDelete ? (

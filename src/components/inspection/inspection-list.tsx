@@ -138,13 +138,13 @@ export function InspectionList() {
                   type="button"
                   onClick={() => void openClaim(claim)}
                   disabled={openingId === claim.id}
-                  className="flex h-full w-full items-center gap-3 rounded-md border border-brand-white/10 bg-brand-navy-deep/40 px-4 py-4 text-left touch-manipulation hover:border-brand-gold/40 disabled:opacity-60"
+                  className="flex h-full w-full items-center gap-3 rounded-2xl border border-brand-gold/15 bg-brand-navy/40 px-4 py-4 text-left touch-manipulation hover:border-brand-gold/40 disabled:opacity-60"
                 >
                   <span
                     className={`h-10 w-1 shrink-0 ${
                       isOpenClaimStatus(claim.status)
                         ? "bg-brand-gold"
-                        : "bg-white/20"
+                        : "bg-brand-white/20"
                     }`}
                   />
                   <span className="min-w-0 flex-1">
@@ -192,7 +192,7 @@ export function InspectionList() {
                 <button
                   type="button"
                   onClick={() => router.push(`/inspections/${row.id}`)}
-                  className="flex w-full items-center gap-3 rounded-md border border-brand-white/10 bg-brand-navy-deep/40 px-3 py-3 text-left touch-manipulation hover:border-brand-gold/40"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-brand-gold/15 bg-brand-navy/40 px-3 py-3 text-left touch-manipulation hover:border-brand-gold/40"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block font-mono text-sm text-brand-gold">

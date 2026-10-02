@@ -49,7 +49,7 @@ export default function LoginForm() {
           </p>
         </div>
 
-        <div className="mb-8 rounded-md border border-brand-white/10 bg-brand-navy-deep/40 px-4 py-6 text-center">
+        <div className="mb-8 rounded-2xl border border-brand-gold/15 bg-brand-navy/40 px-4 py-6 text-center">
           <p className="font-sans text-[9px] font-bold uppercase tracking-[0.2em] text-brand-slate">
             Operated for
           </p>

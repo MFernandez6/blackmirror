@@ -115,11 +115,11 @@ export function ChecklistPanel({
           "h-12 snap-start lg:h-auto lg:w-full lg:px-3 lg:py-2.5",
           active
             ? skipped
-              ? "border-white/20 bg-brand-navy-deep/60 text-brand-slate"
+              ? "border-brand-white/20 bg-brand-navy/60 text-brand-slate"
               : "border-brand-gold bg-brand-gold text-brand-navy"
             : skipped
-              ? "border-white/10 text-white/30"
-              : "border-white/10 text-brand-slate hover:border-brand-gold/30"
+              ? "border-brand-white/10 text-brand-white/30"
+              : "border-brand-white/10 text-brand-slate hover:border-brand-gold/30"
         )}
       >
         <span className="block font-serif text-[11px] font-semibold tracking-[0.12em] lg:text-sm">
@@ -129,7 +129,7 @@ export function ChecklistPanel({
         <span
           className={cn(
             "block font-mono text-[8px] font-bold uppercase tracking-[0.14em] lg:mt-0.5 lg:text-[9px]",
-            active && !skipped ? "text-brand-navy/70" : "text-white/35"
+            active && !skipped ? "text-brand-navy/70" : "text-brand-white/35"
           )}
         >
           {skipped ? "—" : `${done}/${catItems.length}${hits ? ` · ${hits}` : ""}`}
@@ -140,13 +140,13 @@ export function ChecklistPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <aside className="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto border-r border-white/10 p-3 lg:flex">
+      <aside className="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto border-r border-brand-white/10 p-3 lg:flex">
         <p className="eyebrow mb-2 px-1">Coverage</p>
         {tabButtons}
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="no-scrollbar flex gap-1 overflow-x-auto snap-x snap-mandatory border-b border-white/10 px-2 py-2 lg:hidden">
+        <div className="no-scrollbar flex gap-1 overflow-x-auto snap-x snap-mandatory border-b border-brand-white/10 px-2 py-2 lg:hidden">
           {tabButtons}
         </div>
 
@@ -154,7 +154,7 @@ export function ChecklistPanel({
           className={cn(
             "border-b px-4 py-4 sm:px-5",
             coverageOff
-              ? "border-white/10 bg-brand-navy-deep/40"
+              ? "border-brand-white/10 bg-brand-navy/60"
               : "border-brand-gold/20 bg-brand-gold/5"
           )}
         >
@@ -202,7 +202,7 @@ export function ChecklistPanel({
         ) : (
           <>
             {spec.systems ? (
-              <div className="no-scrollbar flex gap-1 overflow-x-auto snap-x snap-mandatory border-b border-white/10 px-2 py-2 md:flex-wrap md:overflow-visible">
+              <div className="no-scrollbar flex gap-1 overflow-x-auto snap-x snap-mandatory border-b border-brand-white/10 px-2 py-2 md:flex-wrap md:overflow-visible">
                 {spec.systems.map((c) => {
                   const catItems = items.filter((i) => i.category === c);
                   const done = catItems.filter((i) => i.presence !== "UNSET").length;
@@ -216,15 +216,15 @@ export function ChecklistPanel({
                         "h-10 shrink-0 snap-start rounded-md border px-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] touch-manipulation",
                         activeCategory === c
                           ? skipped
-                            ? "border-white/20 bg-brand-navy-deep/60 text-brand-slate"
+                            ? "border-brand-white/20 bg-brand-navy/60 text-brand-slate"
                             : "border-brand-gold/60 bg-brand-gold/10 text-brand-gold"
                           : skipped
-                            ? "border-white/10 text-white/30"
-                            : "border-white/10 text-brand-slate"
+                            ? "border-brand-white/10 text-brand-white/30"
+                            : "border-brand-white/10 text-brand-slate"
                       )}
                     >
                       {CATEGORY_META[c].label}
-                      <span className="ml-2 text-white/35">
+                      <span className="ml-2 text-brand-white/35">
                         {skipped ? "—" : `${done}/${catItems.length}`}
                       </span>
                     </button>
@@ -256,7 +256,7 @@ export function ChecklistPanel({
                     <button
                       type="button"
                       onClick={() => onSkipSystem(activeCategory, true)}
-                      className="h-10 w-full max-w-md rounded-md border border-white/10 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-brand-slate touch-manipulation"
+                      className="h-10 w-full max-w-md rounded-md border border-brand-white/10 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-brand-slate touch-manipulation"
                     >
                       Does not apply
                     </button>
@@ -269,12 +269,12 @@ export function ChecklistPanel({
                     const done = rows.filter((i) => i.presence !== "UNSET").length;
                     const hits = rows.filter((i) => i.presence === "PRESENT").length;
                     return (
-                      <li key={group} className="border-b border-white/10 xl:border-white/5">
+                      <li key={group} className="border-b border-brand-white/10 xl:border-brand-white/5">
                         <button
                           type="button"
                           onClick={() => toggleGroup(group)}
                           aria-expanded={open}
-                          className="sticky top-0 z-10 flex w-full items-center gap-3 border-b border-white/5 bg-brand-navy/95 px-4 py-3 text-left backdrop-blur-sm touch-manipulation sm:px-5"
+                          className="sticky top-0 z-10 flex w-full items-center gap-3 border-b border-brand-white/5 bg-brand-navy/95 px-4 py-3 text-left backdrop-blur-sm touch-manipulation sm:px-5"
                         >
                           <span className="min-w-0 flex-1">
                             <span className="block font-serif text-[13px] tracking-[0.14em] text-brand-gold">
@@ -329,7 +329,7 @@ export function ChecklistPanel({
                     <button
                       type="button"
                       onClick={() => onMarkRestNotPresent(unsetIds)}
-                      className="pointer-events-auto w-full rounded-md border border-white/15 bg-brand-navy/95 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-slate backdrop-blur-sm touch-manipulation sm:max-w-md"
+                      className="pointer-events-auto w-full rounded-md border border-brand-white/15 bg-brand-navy/95 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-brand-slate backdrop-blur-sm touch-manipulation sm:max-w-md"
                     >
                       Remainder of this list — not observed
                     </button>
@@ -371,7 +371,7 @@ function ChecklistRow({
   return (
     <div
       className={cn(
-        "border-b border-white/10 px-4 py-4 sm:px-5",
+        "border-b border-brand-white/10 px-4 py-4 sm:px-5",
         finding && "bg-brand-gold/5",
         ruled && "opacity-70"
       )}
@@ -384,7 +384,7 @@ function ChecklistRow({
               ? "bg-brand-gold"
               : ruled
                 ? "bg-severity-minor"
-                : "bg-white/15"
+                : "bg-brand-white/15"
           )}
         />
         <div className="min-w-0 flex-1">
@@ -422,7 +422,7 @@ function ChecklistRow({
             "h-11 rounded-md border font-mono text-[10px] font-bold uppercase tracking-[0.16em] touch-manipulation",
             finding
               ? "border-brand-gold bg-brand-gold text-brand-navy"
-              : "border-white/15 text-brand-slate"
+              : "border-brand-white/15 text-brand-slate"
           )}
         >
           Finding
@@ -434,7 +434,7 @@ function ChecklistRow({
             "h-11 rounded-md border font-mono text-[10px] font-bold uppercase tracking-[0.16em] touch-manipulation",
             ruled
               ? "border-severity-minor/50 bg-severity-minor/15 text-severity-minor"
-              : "border-white/15 text-brand-slate"
+              : "border-brand-white/15 text-brand-slate"
           )}
         >
           Not observed

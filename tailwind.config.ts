@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   darkMode: ["class"],
@@ -18,13 +19,13 @@ const config: Config = {
     extend: {
       borderRadius: {
         none: "0",
-        sm: "4px",
-        DEFAULT: "6px",
-        md: "6px",
-        lg: "10px",
-        xl: "14px",
-        "2xl": "18px",
-        "3xl": "24px",
+        sm: "2px",
+        DEFAULT: "4px",
+        md: "4px",
+        lg: "4px",
+        xl: "6px",
+        "2xl": "8px",
+        "3xl": "10px",
         full: "9999px",
       },
       fontFamily: {
@@ -67,12 +68,13 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
         brand: {
-          navy: "#0F1C2E",
-          "navy-deep": "#020617",
-          gold: "#C6A85B",
-          amber: "#E8B84A",
-          white: "#F4F4F4",
-          slate: "#8B95A5",
+          tile: "rgb(var(--brand-tile) / <alpha-value>)",
+          navy: "rgb(var(--brand-navy) / <alpha-value>)",
+          "navy-deep": "rgb(var(--brand-navy-deep) / <alpha-value>)",
+          gold: "rgb(var(--brand-gold) / <alpha-value>)",
+          amber: "rgb(var(--brand-amber) / <alpha-value>)",
+          white: "rgb(var(--brand-white) / <alpha-value>)",
+          slate: "rgb(var(--brand-slate) / <alpha-value>)",
         },
         ink: {
           DEFAULT: "#0F1C2E",
@@ -80,15 +82,15 @@ const config: Config = {
           raised: "#0a1624",
         },
         paper: "#F4F4F4",
-        hairline: "rgba(244, 244, 244, 0.12)",
+        hairline: "rgb(var(--brand-white) / 0.12)",
         denied: {
-          DEFAULT: "#E89090",
-          soft: "#F5C4C4",
-          muted: "rgba(232, 144, 144, 0.12)",
+          DEFAULT: "rgb(var(--denied) / <alpha-value>)",
+          soft: "rgb(var(--denied-soft) / <alpha-value>)",
+          muted: "rgb(var(--denied) / 0.12)",
         },
         gate: {
-          open: "#E8B84A",
-          closed: "#C6A85B",
+          open: "rgb(var(--brand-amber) / <alpha-value>)",
+          closed: "rgb(var(--brand-gold) / <alpha-value>)",
         },
         severity: {
           minor: "#3D7A4A",
@@ -105,7 +107,7 @@ const config: Config = {
         lg: "none",
         xl: "none",
         "2xl": "none",
-        gold: "0 0 24px rgba(198, 168, 91, 0.08)",
+        gold: "none",
         amber: "0 0 28px rgba(232, 184, 74, 0.16)",
         panel: "0 16px 48px rgba(2, 6, 23, 0.45)",
       },
@@ -121,6 +123,10 @@ const config: Config = {
         touch: "44px",
       },
       keyframes: {
+        "fade-up": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
         "fade-in": {
           from: { opacity: "0" },
           to: { opacity: "1" },
@@ -131,12 +137,17 @@ const config: Config = {
         },
       },
       animation: {
+        "fade-up": "fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
         "fade-in": "fade-in 0.25s ease-out",
         "gate-pulse": "gate-pulse 2.2s ease-in-out infinite",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate"),
+    plugin(({ addVariant }) => {
+      addVariant("light", '[data-theme="light"] &');
+    }),
+  ],
 };
 
 export default config;
