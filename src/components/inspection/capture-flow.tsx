@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CameraCapture } from "@/components/inspection/camera-capture";
+import {
+  CameraCapture,
+  type CapturedImage,
+} from "@/components/inspection/camera-capture";
 import {
   INSPECTION_REASONS,
   LOCATION_OPTIONS,
@@ -61,6 +64,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
   const [indicatorType, setIndicatorType] = useState("");
   const [severity, setSeverity] = useState<Severity>("MODERATE");
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
+  const [companionIds, setCompanionIds] = useState<string[]>([]);
 
   useEffect(() => {
     void getLocalInspection(inspectionId).then((row) => {
@@ -79,13 +83,9 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
 
   const resolvedLocation = location || customLocation.trim();
 
-  async function afterCapture(payload: {
-    blob: Blob;
-    annotations: LocalPhoto["annotations"];
-    exif: LocalPhoto["exifData"];
-    capturedAt: string;
-  }) {
-    const queued = await queueCapturedPhoto({
+  async function queueOne(payload: CapturedImage) {
+    const fieldShot = payload.source === "camera";
+    return queueCapturedPhoto({
       inspectionId,
       inspectionItemId: itemId ?? null,
       blob: payload.blob,
@@ -96,10 +96,24 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
       reason,
       customReasonText: customReason || null,
       locationTag: resolvedLocation || "Pending",
-      gpsLat: gps?.lat ?? payload.exif?.GPSLatitude ?? null,
-      gpsLng: gps?.lng ?? payload.exif?.GPSLongitude ?? null,
+      gpsLat: fieldShot
+        ? gps?.lat ?? payload.exif?.GPSLatitude ?? null
+        : payload.exif?.GPSLatitude ?? null,
+      gpsLng: fieldShot
+        ? gps?.lng ?? payload.exif?.GPSLongitude ?? null
+        : payload.exif?.GPSLongitude ?? null,
     });
+  }
+
+  async function afterCapture(payload: CapturedImage & { extras?: CapturedImage[] }) {
+    const queued = await queueOne(payload);
+    const extras: string[] = [];
+    for (const extra of payload.extras ?? []) {
+      const row = await queueOne(extra);
+      extras.push(row.id);
+    }
     setPhoto(queued);
+    setCompanionIds(extras);
     setStep("confirm");
   }
 
@@ -107,12 +121,16 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
     if (!photo || !canConfirm) return;
     const loc = resolvedLocation;
     await rememberCustomLocation(inspectionId, loc);
-    await patchPhoto(photo.id, {
+    const meta = {
       captureDate: date,
       reason,
       customReasonText: reason === "CUSTOM" ? customReason : null,
       locationTag: loc,
-    });
+    };
+    await patchPhoto(photo.id, meta);
+    for (const id of companionIds) {
+      await patchPhoto(id, meta);
+    }
     setPhoto({
       ...photo,
       captureDate: date,
@@ -276,6 +294,9 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
           <p className="mt-2 text-sm text-brand-slate">
             Local only — works offline. AI and the vault wait until you confirm, then
             until you have signal.
+            {companionIds.length
+              ? ` ${companionIds.length} more photo${companionIds.length === 1 ? "" : "s"} will use the same date, reason, and location.`
+              : ""}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto px-4 pb-28">
@@ -352,6 +373,7 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
             className="h-12"
             onClick={() => {
               if (photo) void deleteLocalPhoto(photo.id);
+              for (const id of companionIds) void deleteLocalPhoto(id);
               onClose();
             }}
           >

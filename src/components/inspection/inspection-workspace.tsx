@@ -259,11 +259,11 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
                 setCaptureOpen(true);
               }}
             >
-              Capture photo
+              Add photos
             </Button>
             <p className="mt-2 text-xs text-brand-slate">
-              Shutter first. Date, reason, and location next. AI is a draft you
-              confirm before the vault write.
+              Camera or upload from Photos / Files. Date, reason, and location
+              next. AI is a draft you confirm before the vault write.
             </p>
           </div>
           <CaptureList
@@ -364,7 +364,7 @@ function CaptureList({
   if (!items.length) {
     return (
       <p className="px-4 py-10 text-sm text-brand-slate">
-        Mark indicators present first, then attach photos.
+        Mark indicators present first, then attach photos — camera or upload.
       </p>
     );
   }
@@ -386,7 +386,7 @@ function CaptureList({
                 </p>
               </div>
               <Button size="sm" onClick={() => onCapture(item.id)}>
-                Capture
+                Add
               </Button>
             </div>
             {shots.length ? (
@@ -603,7 +603,7 @@ function ItemSheet({
 
         <div className="mt-4 flex gap-2">
           <Button className="h-12 flex-1 gap-2" onClick={onCamera}>
-            <Camera className="h-4 w-4" /> Photo
+            <Camera className="h-4 w-4" /> Photo / file
           </Button>
           <Button
             variant="solid"

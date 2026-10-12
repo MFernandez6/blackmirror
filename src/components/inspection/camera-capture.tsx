@@ -1,30 +1,44 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Camera, ImagePlus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { PhotoAnnotation, PhotoExif } from "@/lib/offline/types";
 import { blobToJpeg, stampJpegExif } from "@/lib/inspection/capture";
 import { getCurrentPosition } from "@/lib/inspection/geo";
 
-type Props = {
-  onCancel: () => void;
-  onSave: (payload: {
-    blob: Blob;
-    annotations: PhotoAnnotation[];
-    exif: PhotoExif;
-    capturedAt: string;
-  }) => Promise<void>;
+export type CaptureSource = "camera" | "upload";
+
+export type CapturedImage = {
+  blob: Blob;
+  annotations: PhotoAnnotation[];
+  exif: PhotoExif;
+  capturedAt: string;
+  source: CaptureSource;
 };
 
+type Props = {
+  onCancel: () => void;
+  onSave: (payload: CapturedImage & { extras?: CapturedImage[] }) => Promise<void>;
+};
+
+const ACCEPT =
+  "image/*,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
+
 export function CameraCapture({ onCancel, onSave }: Props) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const extraFilesRef = useRef<File[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [tool, setTool] = useState<"circle" | "arrow">("arrow");
   const [annotations, setAnnotations] = useState<PhotoAnnotation[]>([]);
   const [draft, setDraft] = useState<number[][] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [source, setSource] = useState<CaptureSource>("camera");
+  const [extraCount, setExtraCount] = useState(0);
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -37,16 +51,49 @@ export function CameraCapture({ onCancel, onSave }: Props) {
     };
   }, [preview]);
 
-  async function onFile(file: File) {
-    const url = URL.createObjectURL(file);
-    setPreview(url);
+  function resetInputs() {
+    if (cameraRef.current) cameraRef.current.value = "";
+    if (uploadRef.current) uploadRef.current.value = "";
+  }
+
+  function clearPreview() {
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
     setAnnotations([]);
+    setDraft(null);
+    imageRef.current = null;
+    extraFilesRef.current = [];
+    setExtraCount(0);
+    resetInputs();
+  }
+
+  async function onFile(file: File, next: CaptureSource, rest: File[] = []) {
+    extraFilesRef.current = rest;
+    setExtraCount(rest.length);
+    setSource(next);
+    setAnnotations([]);
+    setDraft(null);
+    const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
+      if (preview) URL.revokeObjectURL(preview);
       imageRef.current = img;
-      draw();
+      setPreview(url);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      toast("Could not open that image — try a JPEG or PNG");
     };
     img.src = url;
+  }
+
+  function onPicked(
+    list: FileList | null,
+    next: CaptureSource
+  ) {
+    if (!list?.length) return;
+    const files = Array.from(list);
+    void onFile(files[0], next, files.slice(1));
   }
 
   function draw(extra?: PhotoAnnotation | null) {
@@ -148,6 +195,34 @@ export function CameraCapture({ onCancel, onSave }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotations, draft, tool, preview]);
 
+  async function encodeFile(
+    file: File,
+    next: CaptureSource
+  ): Promise<CapturedImage> {
+    const jpeg = await blobToJpeg(file);
+    const capturedAt =
+      next === "upload" && file.lastModified
+        ? new Date(file.lastModified)
+        : new Date();
+    const stamped = await stampJpegExif(
+      jpeg,
+      next === "camera" ? gps : null,
+      capturedAt
+    );
+    return {
+      blob: stamped.blob,
+      annotations: [],
+      exif: {
+        ...stamped.exif,
+        Make: "BLACKMIRROR",
+        Model: next === "upload" ? "Imported" : "Field Capture",
+        stamped: next === "camera",
+      },
+      capturedAt: capturedAt.toISOString(),
+      source: next,
+    };
+  }
+
   async function flattenAndSave() {
     if (!imageRef.current) return;
     setBusy(true);
@@ -164,13 +239,34 @@ export function CameraCapture({ onCancel, onSave }: Props) {
       }
       const jpeg = await blobToJpeg(full, 0.88);
       const capturedAt = new Date();
-      const stamped = await stampJpegExif(jpeg, gps, capturedAt);
+      const stamped = await stampJpegExif(
+        jpeg,
+        source === "camera" ? gps : null,
+        capturedAt
+      );
+      const extras: CapturedImage[] = [];
+      for (const file of extraFilesRef.current) {
+        try {
+          extras.push(await encodeFile(file, source));
+        } catch {
+          toast(`Skipped ${file.name || "an image"} — could not read it`);
+        }
+      }
       await onSave({
         blob: stamped.blob,
         annotations,
-        exif: stamped.exif,
+        exif: {
+          ...stamped.exif,
+          Make: "BLACKMIRROR",
+          Model: source === "upload" ? "Imported" : "Field Capture",
+          stamped: source === "camera",
+        },
         capturedAt: capturedAt.toISOString(),
+        source,
+        extras: extras.length ? extras : undefined,
       });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not save that image");
     } finally {
       setBusy(false);
     }
@@ -181,38 +277,64 @@ export function CameraCapture({ onCancel, onSave }: Props) {
       <div className="flex items-center justify-between px-4 py-3 pt-safe">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={preview ? clearPreview : onCancel}
           className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-brand-slate"
         >
-          Cancel
+          {preview ? "Back" : "Cancel"}
         </button>
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand-gold">
-          {gps ? "GPS LOCK" : "NO GPS"}
+          {source === "upload"
+            ? extraCount
+              ? `UPLOAD · +${extraCount}`
+              : "UPLOAD"
+            : gps
+              ? "GPS LOCK"
+              : "NO GPS"}
         </p>
       </div>
 
       {!preview ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6">
-          <p className="text-center text-sm text-brand-slate">
-            Use the rear camera. Timestamp and GPS are stamped into EXIF on save.
+          <p className="text-center font-serif text-xl tracking-wide text-brand-white">
+            Add damage photos
           </p>
-          <Button
-            variant="solid"
-            className="mt-6 h-14 w-full max-w-xs"
-            onClick={() => fileRef.current?.click()}
-          >
-            Open camera
-          </Button>
+          <p className="mt-3 max-w-xs text-center text-sm text-brand-slate">
+            Shoot on site, or bring in images the insured, contractor, or carrier
+            already sent.
+          </p>
+          <div className="mt-8 flex w-full max-w-xs flex-col gap-3">
+            <Button
+              variant="solid"
+              className="h-14 w-full gap-2"
+              onClick={() => cameraRef.current?.click()}
+            >
+              <Camera className="h-4 w-4" />
+              Open camera
+            </Button>
+            <Button
+              variant="outline"
+              className="h-14 w-full gap-2"
+              onClick={() => uploadRef.current?.click()}
+            >
+              <ImagePlus className="h-4 w-4" />
+              Upload images
+            </Button>
+          </div>
           <input
-            ref={fileRef}
+            ref={cameraRef}
             type="file"
-            accept="image/*"
+            accept={ACCEPT}
             capture="environment"
             className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void onFile(file);
-            }}
+            onChange={(e) => onPicked(e.target.files, "camera")}
+          />
+          <input
+            ref={uploadRef}
+            type="file"
+            accept={ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(e) => onPicked(e.target.files, "upload")}
           />
         </div>
       ) : (
@@ -226,6 +348,11 @@ export function CameraCapture({ onCancel, onSave }: Props) {
               onPointerUp={onPointerUp}
             />
           </div>
+          {extraCount ? (
+            <p className="px-4 pb-1 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-brand-gold">
+              {extraCount} more will file with this one
+            </p>
+          ) : null}
           <div className="grid grid-cols-4 gap-2 px-3 py-3 pb-safe">
             <Button
               size="sm"
