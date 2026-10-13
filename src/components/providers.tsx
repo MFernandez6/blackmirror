@@ -2,15 +2,17 @@
 
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
+import { useTheme } from "@/lib/use-theme";
 import { SyncProvider } from "@/components/pwa/sync-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const { theme } = useTheme();
   return (
     <SessionProvider refetchOnWindowFocus={false}>
       <SyncProvider>
         {children}
         <Toaster
-          theme="dark"
+          theme={theme}
           position="top-center"
           toastOptions={{
             style: {

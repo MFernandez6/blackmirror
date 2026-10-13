@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   applicationName: "BLACKMIRROR",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "BLACKMIRROR",
   },
   formatDetection: {
@@ -44,7 +44,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: "cover",
-  themeColor: "#0F1C2E",
+  themeColor: "#F1EDE4",
   interactiveWidget: "resizes-content",
 };
 
@@ -54,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className="dark" data-theme="light" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

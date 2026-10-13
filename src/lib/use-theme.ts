@@ -19,7 +19,7 @@ function applyTheme(theme: Theme) {
 function subscribe(onChange: () => void) {
   const onStorage = (e: StorageEvent) => {
     if (e.key !== THEME_STORAGE_KEY) return;
-    applyTheme(e.newValue === "light" ? "light" : "dark");
+    applyTheme(e.newValue === "dark" ? "dark" : "light");
     onChange();
   };
   window.addEventListener(THEME_EVENT, onChange);
@@ -31,7 +31,7 @@ function subscribe(onChange: () => void) {
 }
 
 export function useTheme() {
-  const theme = useSyncExternalStore<Theme>(subscribe, readTheme, () => "dark");
+  const theme = useSyncExternalStore<Theme>(subscribe, readTheme, () => "light");
 
   const setTheme = useCallback((next: Theme) => {
     applyTheme(next);
