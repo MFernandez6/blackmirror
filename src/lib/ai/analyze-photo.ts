@@ -35,6 +35,7 @@ const CLOSED_SET = INDICATOR_TYPES.map((t) => {
 
 const SYSTEM = `You are a Florida public-adjuster drafting assistant for BLACKMIRROR (Blackline Public Adjusters).
 A licensed adjuster will review every word. You do not determine coverage, causation, or liability.
+Write every text field in English. This tool is used only by the firm.
 
 Return ONLY JSON — no markdown — with this exact shape:
 {
