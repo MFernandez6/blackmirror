@@ -5,6 +5,7 @@ import { BlacklineMark } from "@/components/brand/blackline-mark";
 import { AccountMenu } from "@/components/layout/account-menu";
 import { BlackmirrorMark } from "@/components/brand/blackmirror-mark";
 import { SyncBar } from "@/components/layout/sync-bar";
+import { IdleSessionGuard } from "@/components/layout/idle-session-guard";
 
 type Props = {
   user: { name: string; email: string; role: string };
@@ -14,6 +15,7 @@ type Props = {
 export function FieldShell({ user, children }: Props) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col md:px-4 md:py-3 lg:px-6">
+      <IdleSessionGuard />
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col bg-brand-navy/40 md:min-h-[calc(100dvh-1.5rem)] md:overflow-hidden md:rounded-2xl md:border md:border-brand-gold/15">
         <header className="sticky top-0 z-30 border-b border-brand-gold/10 bg-[linear-gradient(to_bottom,rgb(var(--brand-navy))_0%,rgb(var(--brand-navy-deep)/0.94)_100%)] backdrop-blur-md">
           <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">

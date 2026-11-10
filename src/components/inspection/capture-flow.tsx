@@ -33,6 +33,7 @@ import {
   savePhotoAnalysis,
 } from "@/lib/offline/repo";
 import { runSync } from "@/lib/offline/sync";
+import { getDb } from "@/lib/offline/db";
 import { analysisImage } from "@/lib/inspection/capture";
 import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
 import type { AiDraft, LocalPhoto, ReferenceMatch } from "@/lib/offline/types";
@@ -154,6 +155,15 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
       const inspection = await getLocalInspection(inspectionId);
       if (inspection?.perilTemplate) form.set("peril", inspection.perilTemplate);
       const res = await fetch("/api/analyze-photo", { method: "POST", body: form });
+      if (res.status === 503) {
+        const item = itemId ? await getDb().items.get(itemId) : undefined;
+        setIndicatorType(item?.indicatorType ?? "");
+        setDescription("");
+        setPhoto({ ...photo, captureDate: date, reason, locationTag: loc });
+        toast("AI drafting unavailable — choose the indicator and describe the photo yourself.");
+        setStep("review");
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error || "Analysis failed");
@@ -399,11 +409,14 @@ export function CaptureFlow({ inspectionId, itemId, onClose, onComplete }: Props
     <div className="fixed inset-0 z-[60] flex flex-col bg-brand-navy md:items-center">
       <div className="flex h-full w-full max-w-2xl flex-col">
       <div className="px-4 py-3 pt-safe">
-        <p className="eyebrow">Claude draft — not a determination</p>
+        <p className="eyebrow">
+          {analysis ? "Claude draft — not a determination" : "Manual classification"}
+        </p>
         <h2 className="mt-1 font-serif text-xl">Review & confirm</h2>
         <p className="mt-2 text-xs text-brand-slate">
-          Same Anthropic model as policy parse. It drafts an affirmative defense and
-          a rebuttal to the likely denial for you to edit into the file.
+          {analysis
+            ? "Same Anthropic model as policy parse. It drafts an affirmative defense and a rebuttal to the likely denial for you to edit into the file."
+            : "AI drafting was unavailable for this photo. Choose the indicator it documents and write the description; it files to the vault the same way."}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pb-28">

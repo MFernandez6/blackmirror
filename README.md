@@ -17,21 +17,22 @@ Uses BLACKBOX `DATABASE_URL` / `DIRECT_URL`. Dev server is **port 3001** so it c
 
 ```bash
 npm install
-npx prisma migrate deploy
 npm run db:seed   # only if Adjuster table is empty
 npm run dev
 ```
 
+The database schema is owned by BLACKBOX: apply migrations from the BLACKBOX repo
+(`npm run db:deploy`). Never run `prisma db push` or `prisma migrate dev` from this
+repo — its schema is a subset of the shared database and would drop BLACKBOX columns.
+
 Open [http://localhost:3001](http://localhost:3001). Add to Home Screen on iPhone (Share → Add to Home Screen).
 
-### Credentials (if you seeded BLACKBOX or this app)
+### Accounts
 
-Password: `Password123!`
-
-| Email | Role |
-|---|---|
-| `miguel.fernandez@blacklineadjusting.com` | ADMIN |
-| `marcus.chen@blacklineadjusting.com` | ADJUSTER |
+BLACKMIRROR signs in with the same accounts as BLACKBOX. Admins create users in
+BLACKBOX → Admin → Users; a user must set their own password (and admins must
+enroll MFA when `REQUIRE_ADMIN_MFA=1`) in BLACKBOX before BLACKMIRROR accepts them.
+For a local database, `SEED_PASSWORD` (12+ characters) sets the demo accounts' password.
 
 ## Capture → confirm → AI → vault
 

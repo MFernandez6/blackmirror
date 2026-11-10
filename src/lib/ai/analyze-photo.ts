@@ -92,6 +92,10 @@ function coerce(raw: unknown): PhotoAnalysis | null {
   };
 }
 
+export function aiPhotoAnalysisAvailable(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY?.trim();
+}
+
 export async function analyzeInspectionPhoto(opts: {
   bytes: Buffer;
   mimeType: string;

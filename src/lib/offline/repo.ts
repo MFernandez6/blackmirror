@@ -492,17 +492,21 @@ export async function removeOutbox(id: string) {
   await getDb().outbox.delete(id);
 }
 
-export async function markInspectionClean(id: string, syncedAt: string) {
+/**
+ * Clear the dirty flag only when the row still holds the revision that was pushed;
+ * an edit made while the push was in flight must stay queued for the next sync.
+ */
+export async function markInspectionClean(id: string, syncedAt: string, pushedRev: number) {
   const db = getDb();
   const row = await db.inspections.get(id);
-  if (!row) return;
+  if (!row || row.clientRev !== pushedRev) return;
   await db.inspections.put({ ...row, dirty: false, syncedAt });
 }
 
-export async function markItemClean(id: string) {
+export async function markItemClean(id: string, pushedRev: number) {
   const db = getDb();
   const row = await db.items.get(id);
-  if (!row) return;
+  if (!row || row.clientRev !== pushedRev) return;
   await db.items.put({ ...row, dirty: false });
 }
 
@@ -522,11 +526,44 @@ export async function markPhotoUploaded(id: string, url: string) {
   await enqueue("upsert-photo-meta", id);
 }
 
-export async function markPhotoMetaClean(id: string) {
+export async function markPhotoMetaClean(id: string, pushedRev: number) {
   const db = getDb();
   const row = await db.photos.get(id);
-  if (!row) return;
+  if (!row || row.clientRev !== pushedRev) return;
   await db.photos.put({ ...row, dirty: false });
+}
+
+/** Drop outbox entries whose work has landed; anything still pending keeps its entry. */
+export async function settleOutbox() {
+  const db = getDb();
+  const entries = await db.outbox.toArray();
+  for (const entry of entries) {
+    let pending = false;
+    switch (entry.op) {
+      case "upsert-inspection":
+        pending = !!(await db.inspections.get(entry.entityId))?.dirty;
+        break;
+      case "upsert-item":
+        pending = !!(await db.items.get(entry.entityId))?.dirty;
+        break;
+      case "upsert-photo-meta": {
+        const photo = await db.photos.get(entry.entityId);
+        pending = !!photo && (photo.dirty || photo.syncStatus !== "SYNCED");
+        break;
+      }
+      case "upload-photo":
+      case "analyze-photo":
+      case "commit-photo": {
+        const photo = await db.photos.get(entry.entityId);
+        pending = !!photo && photo.syncStatus !== "SYNCED";
+        break;
+      }
+      case "delete-photo":
+        pending = true;
+        break;
+    }
+    if (!pending) await db.outbox.delete(entry.id);
+  }
 }
 
 export function applyPresenceDefaults(

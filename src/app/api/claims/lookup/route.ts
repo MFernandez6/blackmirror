@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { lookupClaimSchema } from "@/lib/schemas/inspection";
 import { normalizeClaimNumber } from "@/lib/utils";
 import { toCachedClaim } from "@/lib/inspection/serialize";
+import { canAccessClaim } from "@/lib/claims/access";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +27,17 @@ export async function POST(req: Request) {
       claimNumber,
       isArchived: false,
     },
-    select: { id: true },
+    select: { id: true, assignedAdjusterId: true },
   });
 
   if (!claim) {
     return NextResponse.json({ error: "CLAIM_NOT_FOUND" }, { status: 404 });
+  }
+  if (!canAccessClaim(adjuster, claim)) {
+    return NextResponse.json(
+      { error: "NOT_ASSIGNED", message: "This file is not assigned to you. Ask the office to assign it in BLACKBOX." },
+      { status: 403 }
+    );
   }
 
   const cached = await toCachedClaim(claim.id);

@@ -9,6 +9,7 @@ import {
 } from "@/lib/claims/claim-number";
 import { toCachedClaim } from "@/lib/inspection/serialize";
 import { newId } from "@/lib/inspection/ids";
+import { computeFeeCap } from "@/lib/compliance/florida-pa";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,34 @@ export async function POST(req: Request) {
   }
 
   const d = parsed.data;
+  const sourceIntakeId = d.intakeKey ? `BLACKMIRROR:${d.intakeKey}` : null;
+  if (sourceIntakeId) {
+    const replay = await prisma.claim.findUnique({ where: { sourceIntakeId }, select: { id: true } });
+    if (replay) return NextResponse.json(await toCachedClaim(replay.id));
+  }
+
+  if (!d.allowDuplicate) {
+    const duplicate = await prisma.claim.findFirst({
+      where: {
+        isArchived: false,
+        dateOfLoss: dateOnly(d.dateOfLoss),
+        propertyAddress: { equals: d.propertyAddress.trim(), mode: "insensitive" },
+      },
+      select: { claimNumber: true },
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          error: "DUPLICATE_FILE",
+          claimNumber: duplicate.claimNumber,
+          message: `${duplicate.claimNumber} is already open for this address and date of loss.`,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  const fee = computeFeeCap({ isEmergencyLoss: d.isCatClaim });
   const today = new Date();
   const zip = d.zipCode.slice(0, 5);
   const phone = d.phone;
@@ -79,10 +108,10 @@ export async function POST(req: Request) {
           zipCode: zip,
           county: d.county,
           lossDescription: note,
-          isCatClaim: d.isCatClaim,
-          contingencyFeePercent: d.isCatClaim
-            ? new Prisma.Decimal(10)
-            : new Prisma.Decimal(20),
+          isCatClaim: fee.emergencyCapApplies,
+          contingencyFeePercent: new Prisma.Decimal(fee.capPercent),
+          sourceProduct: "BLACKMIRROR",
+          sourceIntakeId,
           assignedAdjusterId: adjuster.id,
           initialContactDate: today,
           lossInspectedDate: today,
@@ -130,6 +159,14 @@ export async function POST(req: Request) {
     const cached = await toCachedClaim(created.id);
     return NextResponse.json(cached, { status: 201 });
   } catch (err) {
+    if (
+      sourceIntakeId &&
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      const replay = await prisma.claim.findUnique({ where: { sourceIntakeId }, select: { id: true } });
+      if (replay) return NextResponse.json(await toCachedClaim(replay.id));
+    }
     console.error("Field intake failed:", err);
     return NextResponse.json(
       { error: "INTAKE_FAILED", message: "Unable to open the file. Retry with signal." },

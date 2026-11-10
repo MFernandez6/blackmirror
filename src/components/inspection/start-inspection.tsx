@@ -28,6 +28,7 @@ export function StartInspection() {
   const router = useRouter();
   const { data: session } = useSession();
   const [preview, setPreview] = useState<string | null>(null);
+  const [intakeKey] = useState(() => crypto.randomUUID());
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -75,7 +76,7 @@ export function StartInspection() {
     if (suggested) setCounty(suggested);
   }
 
-  async function openFile() {
+  async function openFile(allowDuplicate = false) {
     if (!session?.user) return;
     if (!navigator.onLine) {
       setError(
@@ -101,12 +102,21 @@ export function StartInspection() {
           lossType: peril,
           isCatClaim,
           lossDescription,
+          intakeKey,
+          allowDuplicate,
         }),
       });
       const json = (await res.json().catch(() => null)) as
         | (CachedClaim & { message?: string })
         | { error?: string; message?: string }
         | null;
+      if (res.status === 409 && json && "message" in json && !allowDuplicate) {
+        if (window.confirm(`${json.message} Open a second file anyway?`)) {
+          setBusy(false);
+          await openFile(true);
+        }
+        return;
+      }
       if (!res.ok || !json || !("id" in json)) {
         setError(
           json && "message" in json && json.message

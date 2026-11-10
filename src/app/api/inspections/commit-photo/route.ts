@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import type { Prisma, Severity, Confidence } from "@prisma/client";
 import { canEdit, getSession, resolveSessionAdjuster } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { storeVaultPhoto } from "@/lib/storage";
+import { photoHref, storeVaultPhoto } from "@/lib/storage";
+import { canAccessClaim } from "@/lib/claims/access";
+import { detectAllowedFile } from "@/lib/security/file-signature";
 import { INDICATOR_BY_TYPE } from "@/lib/inspection/indicators";
 import {
   displayVaultPath,
@@ -15,6 +17,8 @@ import { ensureInspectionRow } from "@/lib/inspection/serialize";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -55,12 +59,30 @@ export async function POST(req: Request) {
   if (!def) {
     return NextResponse.json({ error: "UNKNOWN_INDICATOR" }, { status: 400 });
   }
+  if (file.size > MAX_PHOTO_BYTES) {
+    return NextResponse.json({ error: "IMAGE_TOO_LARGE" }, { status: 413 });
+  }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const detected = detectAllowedFile(bytes, file.name || "photo.jpg");
+  if (!detected?.mime.startsWith("image/")) {
+    return NextResponse.json({ error: "UNSUPPORTED_IMAGE" }, { status: 415 });
+  }
 
+  const existingInspection = await prisma.inspection.findUnique({
+    where: { id: inspectionId },
+    include: { claim: { select: { id: true, claimNumber: true } } },
+  });
+  if (!existingInspection && claimId) {
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      select: { assignedAdjusterId: true },
+    });
+    if (!claim || !canAccessClaim(adjuster, claim)) {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+  }
   const inspection =
-    (await prisma.inspection.findUnique({
-      where: { id: inspectionId },
-      include: { claim: { select: { id: true, claimNumber: true } } },
-    })) ??
+    existingInspection ??
     (claimId
       ? await ensureInspectionRow({
           id: inspectionId,
@@ -73,6 +95,13 @@ export async function POST(req: Request) {
   }
   if (adjuster.role === "ADJUSTER" && inspection.adjusterId !== adjuster.id) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  }
+  const existingPhoto = await prisma.photo.findUnique({
+    where: { id: photoId },
+    select: { inspectionId: true },
+  });
+  if (existingPhoto && existingPhoto.inspectionId !== inspectionId) {
+    return NextResponse.json({ error: "PHOTO_MISMATCH" }, { status: 409 });
   }
 
   const capturedAt = new Date();
@@ -91,17 +120,16 @@ export async function POST(req: Request) {
     description: description || def.label,
   });
 
-  const bytes = Buffer.from(await file.arrayBuffer());
   let stored: { fileUrl: string; storagePath: string };
   try {
     stored = await storeVaultPhoto({
       storagePath,
       bytes,
-      mimeType: file.type || "image/jpeg",
+      mimeType: detected.mime,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Storage upload failed";
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error("[commit-photo] storage upload failed", err);
+    return NextResponse.json({ error: "STORAGE_UPLOAD_FAILED" }, { status: 502 });
   }
 
   let similarReferenceIds: string[] = [];
@@ -164,10 +192,10 @@ export async function POST(req: Request) {
       gpsLat,
       gpsLng,
       capturedAt,
-      aiSuggestedCategory: def.category,
-      aiSuggestedIndicator: aiSuggestedIndicator || def.type,
-      aiConfidence: conf,
-      aiEstimatedSeverity: sev,
+      aiSuggestedCategory: aiSuggestedIndicator ? INDICATOR_BY_TYPE[aiSuggestedIndicator]?.category ?? null : null,
+      aiSuggestedIndicator,
+      aiConfidence: aiSuggestedIndicator ? conf : null,
+      aiEstimatedSeverity: aiSuggestedIndicator ? sev : null,
       aiRationale,
       similarReferenceIds: similarReferenceIds as Prisma.InputJsonValue,
       adjusterConfirmed: confirm,
@@ -263,7 +291,7 @@ export async function POST(req: Request) {
           fileName,
           fileUrl: stored.fileUrl,
           fileSizeBytes: bytes.byteLength,
-          mimeType: file.type || "image/jpeg",
+          mimeType: detected.mime,
         },
       });
       vault = await tx.documentVaultEntry.update({
@@ -277,7 +305,7 @@ export async function POST(req: Request) {
           fileName,
           fileUrl: stored.fileUrl,
           fileSizeBytes: bytes.byteLength,
-          mimeType: file.type || "image/jpeg",
+          mimeType: detected.mime,
           docType: "PHOTO",
           uploadedById: adjuster.id,
         },
@@ -312,14 +340,14 @@ export async function POST(req: Request) {
       });
     }
 
-    return { itemId, sessionId: sessionRowId, vaultId: vault.id, url: stored.fileUrl, storagePath: stored.storagePath };
+    return { itemId, sessionId: sessionRowId, vaultId: vault.id, url: photoHref(photoId), storagePath: stored.storagePath };
   },
     { timeout: 20_000, maxWait: 10_000 }
   );
 
   return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Vault write failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[commit-photo] vault write failed", err);
+    return NextResponse.json({ error: "VAULT_WRITE_FAILED" }, { status: 500 });
   }
 }

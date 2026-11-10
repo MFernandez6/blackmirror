@@ -1,7 +1,7 @@
 import type { AdjusterRole, ClaimStatus, InspectionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toCachedClaim } from "@/lib/inspection/serialize";
-import { isOpenClaimStatus } from "@/lib/inspection/labels";
+import { isOpenClaimStatus, OPEN_CLAIM_STATUSES } from "@/lib/inspection/labels";
 import type { CachedClaim } from "@/lib/offline/types";
 
 export type AssignedClaim = CachedClaim;
@@ -13,7 +13,14 @@ export async function listAssignedClaimsForAdjuster(adjuster: {
   const rows = await prisma.claim.findMany({
     where: {
       isArchived: false,
-      assignedAdjusterId: adjuster.id,
+      ...(adjuster.role === "ADMIN"
+        ? {
+            OR: [
+              { assignedAdjusterId: adjuster.id },
+              { status: { in: OPEN_CLAIM_STATUSES } },
+            ],
+          }
+        : { assignedAdjusterId: adjuster.id }),
     },
     select: { id: true, status: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },

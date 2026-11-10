@@ -7,14 +7,7 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token, req }) => {
-        const path = req.nextUrl.pathname;
-        if (path.startsWith("/login") || path.startsWith("/offline")) return true;
-        if (path === "/sw.js" || path.startsWith("/icons") || path === "/manifest.webmanifest") {
-          return true;
-        }
-        return !!token;
-      },
+      authorized: ({ token }) => !!token && !token.revoked,
     },
     pages: {
       signIn: "/login",

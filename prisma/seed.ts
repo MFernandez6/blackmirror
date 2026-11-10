@@ -1,6 +1,7 @@
 /**
  * BLACKMIRROR seed — non-destructive.
- * Creates adjusters only when the Adjuster table is empty.
+ * Creates demo adjusters only when the Adjuster table is empty on a local database,
+ * with the password from SEED_PASSWORD. Reference examples are seeded everywhere.
  * Does not wipe BLACKBOX claims.
  */
 
@@ -9,11 +10,16 @@ import { hash } from "bcryptjs";
 import { seedReferenceExamples } from "./seed-references";
 
 const prisma = new PrismaClient();
-const SEED_PASSWORD = "Password123!";
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "";
+const HOSTED_DB = /supabase\.(co|com)/.test(process.env.DATABASE_URL ?? "");
 
 async function main() {
   const existing = await prisma.adjuster.count();
-  if (existing === 0) {
+  if (existing === 0 && HOSTED_DB) {
+    console.log("Adjuster table is empty on a hosted database; create users in BLACKBOX → Admin → Users.");
+  } else if (existing === 0 && SEED_PASSWORD.length < 12) {
+    console.error("Skipping demo adjusters: set SEED_PASSWORD (12+ characters).");
+  } else if (existing === 0) {
 
   const passwordHash = await hash(SEED_PASSWORD, 10);
   console.log("Creating seed adjusters…");
@@ -57,7 +63,7 @@ async function main() {
       },
     ],
   });
-    console.log("Adjusters created. Password for all: Password123!");
+    console.log("Demo adjusters created with the password from SEED_PASSWORD.");
   } else {
     console.log(`Adjusters already present (${existing}).`);
   }

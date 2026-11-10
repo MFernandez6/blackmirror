@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { canEdit, getSession, resolveSessionAdjuster } from "@/lib/auth";
-import { analyzeInspectionPhoto } from "@/lib/ai/analyze-photo";
+import { aiPhotoAnalysisAvailable, analyzeInspectionPhoto } from "@/lib/ai/analyze-photo";
 import { findSimilarReferences } from "@/lib/ai/similar";
+import { detectAllowedFile } from "@/lib/security/file-signature";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/** 503 tells the field app to classify manually instead of retrying. */
+function aiUnavailable() {
+  return NextResponse.json(
+    {
+      error: "AI_UNAVAILABLE",
+      message: "AI drafting is unavailable. Classify this photo yourself; it will still be filed.",
+    },
+    { status: 503 }
+  );
+}
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -27,12 +39,17 @@ export async function POST(req: Request) {
   if (bytes.byteLength > 8 * 1024 * 1024) {
     return NextResponse.json({ error: "IMAGE_TOO_LARGE" }, { status: 413 });
   }
+  const detected = detectAllowedFile(bytes, file.name || "photo.jpg");
+  if (!detected?.mime.startsWith("image/")) {
+    return NextResponse.json({ error: "UNSUPPORTED_IMAGE" }, { status: 415 });
+  }
+  if (!aiPhotoAnalysisAvailable()) return aiUnavailable();
 
   try {
     const peril = String(form.get("peril") ?? "").trim() || null;
     const analysis = await analyzeInspectionPhoto({
       bytes,
-      mimeType: file.type || "image/jpeg",
+      mimeType: detected.mime,
       peril,
     });
     const query = [
@@ -41,7 +58,10 @@ export async function POST(req: Request) {
       analysis.estimatedSeverity,
       analysis.visualRationale,
     ].join(" ");
-    const references = await findSimilarReferences(query, 3);
+    const references = await findSimilarReferences(query, 3).catch((err) => {
+      console.error("[analyze-photo] reference lookup failed", err);
+      return [];
+    });
     return NextResponse.json({
       draft: true,
       analysis,
@@ -50,7 +70,7 @@ export async function POST(req: Request) {
         "AI suggestion only. A licensed adjuster must review and confirm before this finding is used in the claim file.",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "ANALYSIS_FAILED";
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error("[analyze-photo] AI analysis failed", err);
+    return aiUnavailable();
   }
 }

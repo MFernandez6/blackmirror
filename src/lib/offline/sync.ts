@@ -7,11 +7,11 @@ import {
   markInspectionClean,
   markItemClean,
   markPhotoMetaClean,
-  markPhotoUploaded,
   patchPhoto,
   pendingOutboxCount,
   removeOutbox,
   savePhotoAnalysis,
+  settleOutbox,
   getLocalInspection,
 } from "./repo";
 import { formatDefenseDraft } from "@/lib/ai/format-defense-draft";
@@ -126,92 +126,119 @@ async function pushDirty(): Promise<void> {
   }
 
   const ts = new Date().toISOString();
-  await Promise.all(inspections.map((r) => markInspectionClean(r.id, ts)));
-  await Promise.all(items.map((r) => markItemClean(r.id)));
-  await Promise.all(photos.map((r) => markPhotoMetaClean(r.id)));
+  await Promise.all(inspections.map((r) => markInspectionClean(r.id, ts, r.clientRev)));
+  await Promise.all(items.map((r) => markItemClean(r.id, r.clientRev)));
+  await Promise.all(photos.map((r) => markPhotoMetaClean(r.id, r.clientRev)));
 }
 
-async function processCaptureQueue(): Promise<void> {
-  const pending = await listPendingPhotos();
-  for (const photo of pending) {
-    if (!photo.blob) continue;
+/** Thrown by analysis when the server has no AI available; the photo is filed unclassified instead. */
+class AiUnavailableError extends Error {}
 
-    if (!photo.analysis) {
-      const form = new FormData();
-      form.set("file", await analysisImage(photo.blob), `${photo.id}.jpg`);
-      const parent = await getLocalInspection(photo.inspectionId);
-      if (parent?.perilTemplate) form.set("peril", parent.perilTemplate);
-      const res = await fetch("/api/analyze-photo", { method: "POST", body: form });
-      if (!res.ok) {
-        const text = await res.text().catch(() => res.statusText);
-        throw new Error(`Photo analysis failed (${res.status}): ${text}`);
-      }
-      const data = (await res.json()) as {
-        analysis: AiDraft;
-        references: ReferenceMatch[];
-      };
-      await savePhotoAnalysis(photo.id, data.analysis, data.references);
-    }
+async function analyzeQueuedPhoto(photo: LocalPhoto): Promise<void> {
+  const form = new FormData();
+  form.set("file", await analysisImage(photo.blob!), `${photo.id}.jpg`);
+  const parent = await getLocalInspection(photo.inspectionId);
+  if (parent?.perilTemplate) form.set("peril", parent.perilTemplate);
+  const res = await fetch("/api/analyze-photo", { method: "POST", body: form });
+  if (res.status === 503) throw new AiUnavailableError();
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Photo analysis failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as {
+    analysis: AiDraft;
+    references: ReferenceMatch[];
+  };
+  await savePhotoAnalysis(photo.id, data.analysis, data.references);
+}
 
-    const fresh = (await getDb().photos.get(photo.id)) ?? photo;
-    const analysis = fresh.analysis;
-    if (!analysis) continue;
+async function commitQueuedPhoto(photo: LocalPhoto): Promise<void> {
+  const analysis = photo.analysis;
+  // Without an AI draft the photo files under the checklist item it was taken for, unconfirmed.
+  const itemIndicator = photo.inspectionItemId
+    ? (await getDb().items.get(photo.inspectionItemId))?.indicatorType
+    : undefined;
+  const indicatorType = analysis?.indicatorType ?? itemIndicator;
+  if (!indicatorType) return;
 
-    const commit = new FormData();
-    commit.set("id", fresh.id);
-    commit.set("inspectionId", fresh.inspectionId);
-    if (fresh.inspectionItemId) commit.set("inspectionItemId", fresh.inspectionItemId);
-    if (fresh.sessionId) commit.set("sessionId", fresh.sessionId);
-    commit.set("locationTag", fresh.locationTag ?? "Unspecified");
-    commit.set("captureDate", fresh.captureDate);
-    commit.set("reason", fresh.reason);
-    if (fresh.customReasonText) commit.set("customReasonText", fresh.customReasonText);
-    commit.set(
-      "description",
-      fresh.adjusterEditedDescription || formatDefenseDraft(analysis)
-    );
-    commit.set("adjusterConfirmed", "false");
-    commit.set("indicatorType", analysis.indicatorType);
+  const commit = new FormData();
+  commit.set("id", photo.id);
+  commit.set("inspectionId", photo.inspectionId);
+  if (photo.inspectionItemId) commit.set("inspectionItemId", photo.inspectionItemId);
+  if (photo.sessionId) commit.set("sessionId", photo.sessionId);
+  commit.set("locationTag", photo.locationTag ?? "Unspecified");
+  commit.set("captureDate", photo.captureDate);
+  commit.set("reason", photo.reason);
+  if (photo.customReasonText) commit.set("customReasonText", photo.customReasonText);
+  commit.set(
+    "description",
+    photo.adjusterEditedDescription || (analysis ? formatDefenseDraft(analysis) : "")
+  );
+  commit.set("adjusterConfirmed", "false");
+  commit.set("indicatorType", indicatorType);
+  if (analysis) {
     commit.set("category", analysis.category);
     commit.set("severity", analysis.estimatedSeverity);
     commit.set("confidence", analysis.confidence);
     commit.set("aiRationale", formatDefenseDraft(analysis));
     commit.set("aiSuggestedIndicator", analysis.indicatorType);
-    commit.set(
-      "similarReferenceIds",
-      JSON.stringify(fresh.references.map((r) => r.id))
-    );
-    if (fresh.gpsLat != null) commit.set("gpsLat", String(fresh.gpsLat));
-    if (fresh.gpsLng != null) commit.set("gpsLng", String(fresh.gpsLng));
-    const parent = await getLocalInspection(fresh.inspectionId);
-    if (parent) commit.set("claimId", parent.claimId);
-    commit.set("file", fresh.blob!, `${fresh.id}.jpg`);
-
-    const committed = await fetch("/api/inspections/commit-photo", {
-      method: "POST",
-      body: commit,
-    });
-    if (!committed.ok) {
-      const text = await committed.text().catch(() => committed.statusText);
-      throw new Error(`Vault commit failed (${committed.status}): ${text}`);
-    }
-    const result = (await committed.json()) as {
-      url: string;
-      storagePath: string;
-      itemId: string;
-      sessionId: string;
-    };
-    await patchPhoto(fresh.id, {
-      url: result.url,
-      storagePath: result.storagePath,
-      inspectionItemId: result.itemId,
-      sessionId: result.sessionId,
-      blob: null,
-      uploadPending: false,
-      syncStatus: "SYNCED",
-      dirty: false,
-    });
   }
+  commit.set(
+    "similarReferenceIds",
+    JSON.stringify(photo.references.map((r) => r.id))
+  );
+  if (photo.gpsLat != null) commit.set("gpsLat", String(photo.gpsLat));
+  if (photo.gpsLng != null) commit.set("gpsLng", String(photo.gpsLng));
+  const parent = await getLocalInspection(photo.inspectionId);
+  if (parent) commit.set("claimId", parent.claimId);
+  commit.set("file", photo.blob!, `${photo.id}.jpg`);
+
+  const committed = await fetch("/api/inspections/commit-photo", {
+    method: "POST",
+    body: commit,
+  });
+  if (!committed.ok) {
+    const text = await committed.text().catch(() => committed.statusText);
+    throw new Error(`Vault commit failed (${committed.status}): ${text}`);
+  }
+  const result = (await committed.json()) as {
+    url: string;
+    storagePath: string;
+    itemId: string;
+    sessionId: string;
+  };
+  await patchPhoto(photo.id, {
+    url: result.url,
+    storagePath: result.storagePath,
+    inspectionItemId: result.itemId,
+    sessionId: result.sessionId,
+    blob: null,
+    uploadPending: false,
+    syncStatus: "SYNCED",
+    dirty: false,
+  });
+}
+
+/** Files each queued photo independently so one failure does not hold back the rest. */
+async function processCaptureQueue(): Promise<string | null> {
+  let firstError: string | null = null;
+  for (const photo of await listPendingPhotos()) {
+    if (!photo.blob) continue;
+    try {
+      if (!photo.analysis) {
+        try {
+          await analyzeQueuedPhoto(photo);
+        } catch (err) {
+          if (!(err instanceof AiUnavailableError)) throw err;
+        }
+      }
+      const fresh = (await getDb().photos.get(photo.id)) ?? photo;
+      await commitQueuedPhoto(fresh);
+    } catch (err) {
+      firstError ??= err instanceof Error ? err.message : "Photo filing failed";
+    }
+  }
+  return firstError;
 }
 
 function mergeByRev<T extends { id: string; clientRev: number; updatedAt: string }>(
@@ -343,15 +370,14 @@ export async function runSync(): Promise<void> {
   try {
     await processPhotoDeletes();
     await pushDirty();
-    await processCaptureQueue();
+    const captureError = await processCaptureQueue();
     await pullRemote();
-    const leftover = await listOutbox();
-    for (const entry of leftover) {
-      await removeOutbox(entry.id);
-    }
+    await settleOutbox();
+    if (captureError) throw new Error(captureError);
     lastSyncedAt = new Date().toISOString();
   } catch (err) {
     lastError = err instanceof Error ? err.message : "Sync failed";
+    await settleOutbox().catch(() => undefined);
     const leftover = await listOutbox();
     for (const entry of leftover) {
       await bumpOutboxError(entry.id, lastError);

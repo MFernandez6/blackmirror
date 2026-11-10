@@ -2,6 +2,7 @@ import { Prisma, type LossType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { newId } from "@/lib/inspection/ids";
 import type { CachedClaim } from "@/lib/offline/types";
+import { photoHref } from "@/lib/storage";
 
 type Db = {
   property: typeof prisma.property;
@@ -232,7 +233,7 @@ export function toSyncPhoto(row: {
     id: row.id,
     inspectionItemId: row.inspectionItemId,
     inspectionId: row.inspectionId ?? row.inspectionItem?.inspectionId ?? "",
-    url: row.url,
+    url: row.url ? photoHref(row.id) : "",
     caption: row.caption,
     exifData: row.exifData,
     annotations: Array.isArray(row.annotations) ? row.annotations : [],

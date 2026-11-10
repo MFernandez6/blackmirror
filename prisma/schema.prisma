@@ -197,6 +197,17 @@ model Adjuster {
   licenseNumber String
   role          AdjusterRole @default(ADJUSTER)
   isActive      Boolean      @default(true)
+  /// Account security — shared by every BLACKSUITE app that authenticates against Adjuster
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  passwordChangedAt  DateTime?
+  mustChangePassword Boolean   @default(false)
+  /// Bumped to revoke every outstanding session for this user
+  sessionVersion     Int       @default(0)
+  /// Sealed TOTP secret; MFA is active only when mfaEnabledAt is set
+  mfaSecret          String?
+  mfaEnabledAt       DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -283,6 +294,13 @@ model Claim {
   /// Application layer must set this from isCatClaim on create/update — do not
   /// rely on the schema default alone when isCatClaim is true.
   contingencyFeePercent  Decimal     @default(20.00) @db.Decimal(5, 2)
+  /// Fla. Stat. § 626.854(11) fee-cap input (managed in BLACKBOX)
+  claimReportedDate      DateTime?   @db.Date
+  /// Originating product when the file was opened from a sibling system
+  sourceProduct          String?
+  /// Idempotency key for files opened outside BLACKBOX
+  sourceIntakeId         String?     @unique
+  sourceIntakeNumber     String?
   assignedAdjusterId     String?
   /// Claim dates (ops calendar — separate from dateOfLoss)
   initialContactDate        DateTime? @db.Date
@@ -788,4 +806,21 @@ model ReferenceExample {
 
   @@index([category, indicatorType])
   @@index([indicatorType])
+}
+
+/// Sign-in and account-security audit trail shared across BLACKSUITE apps
+model AuthEvent {
+  id         String   @id @default(cuid())
+  adjusterId String?
+  email      String
+  event      String
+  app        String   @default("BLACKBOX")
+  ip         String?
+  userAgent  String?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@index([adjusterId])
 }

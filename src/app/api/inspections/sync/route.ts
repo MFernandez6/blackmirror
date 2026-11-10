@@ -10,6 +10,7 @@ import {
   toSyncPhoto,
   ensurePropertyForClaim,
 } from "@/lib/inspection/serialize";
+import { canAccessClaim } from "@/lib/claims/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -97,10 +98,22 @@ export async function POST(req: Request) {
     );
   }
 
-  const { inspections, items, photos } = parsed.data;
+  const { items, photos } = parsed.data;
 
-  const claimIds = Array.from(new Set(inspections.map((row) => row.claimId)));
-  for (const claimId of claimIds) {
+  const claimIds = Array.from(new Set(parsed.data.inspections.map((row) => row.claimId)));
+  const claims = await prisma.claim.findMany({
+    where: { id: { in: claimIds } },
+    select: { id: true, assignedAdjusterId: true },
+  });
+  const allowedClaimIds = new Set(
+    claims.filter((claim) => canAccessClaim(adjuster, claim)).map((claim) => claim.id)
+  );
+  const inspections = parsed.data.inspections.filter(
+    (row) =>
+      allowedClaimIds.has(row.claimId) &&
+      (adjuster.role !== "ADJUSTER" || row.adjusterId === adjuster.id)
+  );
+  for (const claimId of Array.from(new Set(inspections.map((row) => row.claimId)))) {
     await ensurePropertyForClaim(claimId);
   }
 
@@ -108,13 +121,17 @@ export async function POST(req: Request) {
 
   await prisma.$transaction(async (tx) => {
     for (const row of inspections) {
-      if (adjuster.role === "ADJUSTER" && row.adjusterId !== adjuster.id) {
-        continue;
-      }
       const existing = await tx.inspection.findUnique({
         where: { id: row.id },
-        select: { clientRev: true, updatedAt: true },
+        select: { clientRev: true, updatedAt: true, adjusterId: true, claimId: true },
       });
+      if (
+        existing &&
+        adjuster.role === "ADJUSTER" &&
+        (existing.adjusterId !== adjuster.id || existing.claimId !== row.claimId)
+      ) {
+        continue;
+      }
       if (
         existing &&
         (existing.clientRev > row.clientRev ||
@@ -167,7 +184,7 @@ export async function POST(req: Request) {
       for (const row of slice) {
         const parent = await tx.inspection.findUnique({
           where: { id: row.inspectionId },
-          select: { adjusterId: true },
+          select: { adjusterId: true, claimId: true },
         });
         if (!parent) continue;
         if (adjuster.role === "ADJUSTER" && parent.adjusterId !== adjuster.id) {
@@ -176,8 +193,9 @@ export async function POST(req: Request) {
 
         const existing = await tx.inspectionItem.findUnique({
           where: { id: row.id },
-          select: { clientRev: true, updatedAt: true },
+          select: { clientRev: true, updatedAt: true, adjusterConfirmed: true, inspectionId: true },
         });
+        if (existing && existing.inspectionId !== row.inspectionId) continue;
         if (
           existing &&
           (existing.clientRev > row.clientRev ||
@@ -242,6 +260,24 @@ export async function POST(req: Request) {
             adjusterFinalCategory: data.adjusterFinalCategory,
           },
         });
+
+        if (data.adjusterConfirmed && !existing?.adjusterConfirmed && data.aiSuggestedIndicator) {
+          await tx.claimAuditEvent.create({
+            data: {
+              claimId: parent.claimId,
+              actorId: adjuster.id,
+              action: "INSPECTION_FINDING_CONFIRMED",
+              entityType: "InspectionItem",
+              entityId: row.id,
+              summary: `${adjuster.name} confirmed the AI-suggested finding "${row.indicatorType}".`,
+              meta: {
+                inspectionId: row.inspectionId,
+                aiSuggestedIndicator: data.aiSuggestedIndicator,
+                severity: data.severity ?? null,
+              },
+            },
+          });
+        }
       }
     }, txOpts);
   }
@@ -263,36 +299,22 @@ export async function POST(req: Request) {
 
         const existing = await tx.photo.findUnique({
           where: { id: row.id },
-          select: { clientRev: true, updatedAt: true, url: true },
+          select: { clientRev: true, updatedAt: true, inspectionId: true },
         });
+        // Photo rows and their storage URLs are created only by commit-photo; sync
+        // carries metadata edits and never a client-supplied URL.
+        if (!existing || existing.inspectionId !== row.inspectionId) continue;
         if (
-          existing &&
-          (existing.clientRev > row.clientRev ||
-            (existing.clientRev === row.clientRev &&
-              existing.updatedAt > new Date(row.updatedAt)))
+          existing.clientRev > row.clientRev ||
+          (existing.clientRev === row.clientRev &&
+            existing.updatedAt > new Date(row.updatedAt))
         ) {
           continue;
         }
 
-        const url = row.url || existing?.url || "";
-        await tx.photo.upsert({
+        await tx.photo.update({
           where: { id: row.id },
-          create: {
-            id: row.id,
-            inspectionId: row.inspectionId,
-            inspectionItemId: row.inspectionItemId ?? null,
-            url,
-            caption: row.caption,
-            exifData: row.exifData as Prisma.InputJsonValue | undefined,
-            annotations: row.annotations as Prisma.InputJsonValue,
-            capturedAt: new Date(row.capturedAt),
-            captureDate: new Date(row.capturedAt),
-            clientRev: row.clientRev,
-            createdAt: new Date(row.createdAt),
-            updatedAt: new Date(row.updatedAt),
-          },
-          update: {
-            url,
+          data: {
             caption: row.caption,
             exifData: row.exifData as Prisma.InputJsonValue | undefined,
             annotations: row.annotations as Prisma.InputJsonValue,

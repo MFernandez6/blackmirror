@@ -60,6 +60,10 @@ export const fieldIntakeSchema = z.object({
   lossType: lossTypeEnum,
   isCatClaim: z.boolean().optional().default(false),
   lossDescription: optionalContact,
+  /** Generated once per intake form; a retried submit returns the file it already opened */
+  intakeKey: z.string().uuid().optional(),
+  /** Set after the adjuster confirms opening a second file for the same address and date of loss */
+  allowDuplicate: z.boolean().optional().default(false),
 });
 
 export const syncInspectionSchema = z.object({
