@@ -103,7 +103,7 @@ export function InspectionList() {
           onClick={() => router.push("/inspections/new")}
         >
           <Plus className="h-4 w-4" />
-          First visit — open a file
+          Look up a file
         </Button>
       </div>
 
@@ -179,7 +179,7 @@ export function InspectionList() {
           onClick={() => router.push("/inspections/new")}
         >
           <Plus className="h-4 w-4" />
-          First visit — open a file
+          Look up a file
         </Button>
       </div>
 
