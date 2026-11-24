@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { buildInspectionPdf, downloadBlob } from "@/lib/pdf/report";
 import type { LocalInspection, LocalItem, LocalPhoto } from "@/lib/offline/types";
 
 export function ExportPanel({
@@ -17,9 +16,16 @@ export function ExportPanel({
 }) {
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine) {
+      void import("@/lib/pdf/report");
+    }
+  }, []);
+
   async function exportPdf() {
     setBusy(true);
     try {
+      const { buildInspectionPdf, downloadBlob } = await import("@/lib/pdf/report");
       const blob = await buildInspectionPdf({ inspection, items, photos });
       const name = `${inspection.claimNumber}-inspection.pdf`;
       downloadBlob(blob, name);
