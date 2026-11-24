@@ -1,5 +1,13 @@
-const CACHE = "blackmirror-v2";
+const CACHE = "blackmirror-v3";
 const PRECACHE = ["/offline", "/login", "/inspections", "/icons/icon-192.png"];
+
+function isAppShell(url) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith("/api/")) return false;
+  if (url.pathname.startsWith("/_next/static/")) return true;
+  if (url.pathname.startsWith("/icons/")) return true;
+  return PRECACHE.includes(url.pathname);
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -23,17 +31,29 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+
+  const shell = isAppShell(url);
+  if (!shell && req.mode !== "navigate") return;
 
   event.respondWith(
     (async () => {
+      const hashed =
+        url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/");
+      if (hashed) {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+      }
       try {
         const fresh = await fetch(req);
-        const cache = await caches.open(CACHE);
-        cache.put(req, fresh.clone());
+        if (shell && fresh.ok) {
+          const cache = await caches.open(CACHE);
+          await cache.put(req, fresh.clone());
+        }
         return fresh;
       } catch {
-        const cached = await caches.match(req);
+        const cached = shell ? await caches.match(req) : null;
         if (cached) return cached;
         if (req.mode === "navigate") {
           const offline = await caches.match("/offline");
