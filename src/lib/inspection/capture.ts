@@ -72,15 +72,10 @@ export async function stampJpegExif(
   }
 }
 
-export async function blobToJpeg(
-  source: Blob | HTMLCanvasElement,
-  quality = 0.88
-): Promise<Blob> {
-  if (source instanceof Blob && source.type === "image/jpeg") return source;
-  const canvas =
-    source instanceof HTMLCanvasElement
-      ? source
-      : await blobToCanvas(source);
+/** Longest stored or analyzed edge. EXIF is stamped after this encode. */
+export const STORED_MAX_EDGE = 1568;
+
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("JPEG encode failed"))),
@@ -90,18 +85,64 @@ export async function blobToJpeg(
   });
 }
 
-/** Claude downsamples past 1568px anyway; send a smaller copy for analysis, keep the original for the vault. */
-const ANALYSIS_MAX_EDGE = 1568;
+async function drawWithinEdge(
+  source: CanvasImageSource,
+  width: number,
+  height: number
+): Promise<HTMLCanvasElement> {
+  const longEdge = Math.max(width, height);
+  const scale = longEdge > STORED_MAX_EDGE ? STORED_MAX_EDGE / longEdge : 1;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+export async function blobToJpeg(
+  source: Blob | HTMLCanvasElement,
+  quality = 0.88
+): Promise<Blob> {
+  if (source instanceof HTMLCanvasElement) {
+    const longEdge = Math.max(source.width, source.height);
+    const canvas =
+      longEdge > STORED_MAX_EDGE
+        ? await drawWithinEdge(source, source.width, source.height)
+        : source;
+    return canvasToJpeg(canvas, quality);
+  }
+  if (source.type === "image/jpeg") {
+    try {
+      const bitmap = await createImageBitmap(source);
+      const longEdge = Math.max(bitmap.width, bitmap.height);
+      if (longEdge <= STORED_MAX_EDGE) {
+        bitmap.close();
+        return source;
+      }
+      const canvas = await drawWithinEdge(bitmap, bitmap.width, bitmap.height);
+      bitmap.close();
+      return canvasToJpeg(canvas, quality);
+    } catch {
+      return source;
+    }
+  }
+  const canvas = await blobToCanvas(source);
+  return blobToJpeg(canvas, quality);
+}
+
+/** Analysis uses the same long-edge cap as the stored JPEG. */
 
 export async function analysisImage(blob: Blob): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(blob);
     const longEdge = Math.max(bitmap.width, bitmap.height);
-    if (longEdge <= ANALYSIS_MAX_EDGE) {
+    if (longEdge <= STORED_MAX_EDGE) {
       bitmap.close();
       return blob;
     }
-    const scale = ANALYSIS_MAX_EDGE / longEdge;
+    const scale = STORED_MAX_EDGE / longEdge;
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
