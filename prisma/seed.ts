@@ -28,7 +28,7 @@ async function main() {
     data: [
       {
         name: "Miguel Fernandez",
-        email: "miguel.fernandez@blacklineadjusting.com",
+        email: "miguel.fernandez@blacklinepublicadjusters.com",
         passwordHash,
         licenseNumber: "W100001",
         role: AdjusterRole.ADMIN,
