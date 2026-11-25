@@ -21,5 +21,6 @@ export const config = {
     "/api/inspections/:path*",
     "/api/claims/:path*",
     "/api/analyze-photo",
+    "/api/contents",
   ],
 };

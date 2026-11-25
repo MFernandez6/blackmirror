@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CaptureFlow } from "@/components/inspection/capture-flow";
+import { ContentsCapture } from "@/components/inspection/contents-capture";
 import { DefenseDraft } from "@/components/inspection/defense-draft";
 import { VoiceNotes } from "@/components/inspection/voice-notes";
 import { ExportPanel } from "@/components/inspection/export-panel";
@@ -57,6 +58,7 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [captureItemId, setCaptureItemId] = useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [contentsOpen, setContentsOpen] = useState(false);
 
   const reload = useCallback(async () => {
     const row = await getLocalInspection(inspectionId);
@@ -261,9 +263,16 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
             >
               Add photos
             </Button>
+            <Button
+              variant="outline"
+              className="mt-3 h-12 w-full"
+              onClick={() => setContentsOpen(true)}
+            >
+              Add a contents item
+            </Button>
             <p className="mt-2 text-xs text-brand-slate">
-              Camera or upload from Photos / Files. Date, reason, and location
-              next. AI is a draft you confirm before the vault write.
+              Damage photos file to the vault. Contents photos start a Coverage
+              C replacement line from the same or a similar product.
             </p>
           </div>
           <CaptureList
@@ -309,6 +318,14 @@ export function InspectionWorkspace({ inspectionId }: { inspectionId: string }) 
             setCaptureOpen(true);
           }}
           onDeletePhoto={(photoId) => void removePhoto(photoId)}
+        />
+      ) : null}
+
+      {contentsOpen && inspection ? (
+        <ContentsCapture
+          claimId={inspection.claimId}
+          onClose={() => setContentsOpen(false)}
+          onSaved={() => setContentsOpen(false)}
         />
       ) : null}
 
