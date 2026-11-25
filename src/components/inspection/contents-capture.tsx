@@ -9,6 +9,7 @@ import {
   CameraCapture,
   type CapturedImage,
 } from "@/components/inspection/camera-capture";
+import { contentsSearchImage } from "@/lib/inspection/capture";
 
 type Draft = {
   id: string;
@@ -42,6 +43,10 @@ export function ContentsCapture({
 }) {
   const [photo, setPhoto] = useState<CapturedImage | null>(null);
   const [room, setRoom] = useState("");
+  const [itemType, setItemType] = useState("");
+  const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
+  const [age, setAge] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
@@ -55,13 +60,21 @@ export function ContentsCapture({
     }
     setBusy(true);
     try {
+      const file = await contentsSearchImage(photo.blob);
       const form = new FormData();
       form.set("claimId", claimId);
       form.set("room", room);
-      form.set("file", photo.blob, "contents.jpg");
+      form.set("itemType", itemType);
+      form.set("brand", brand);
+      form.set("model", model);
+      form.set("age", age);
+      form.set("file", file, "contents.jpg");
       const res = await fetch("/api/contents", { method: "POST", body: form });
       const data = (await res.json().catch(() => ({}))) as { error?: string; item?: Draft };
-      if (!res.ok || !data.item) throw new Error(data.error || "The product search did not finish.");
+      if (res.status === 504) {
+        throw new Error("The search took too long. Add a brand or model if you know them, then try again. The photo is still here.");
+      }
+      if (!res.ok || !data.item) throw new Error(data.error || "The product search did not finish. The photo is still here.");
       setDraft(data.item);
       setQuantity(String(data.item.quantity));
       setUnitCost(data.item.listedPrice ?? "");
@@ -112,8 +125,9 @@ export function ContentsCapture({
           <p className="eyebrow">Coverage C</p>
           <h2 className="mt-1 font-serif text-2xl text-brand-white">Contents item</h2>
           <p className="mt-2 text-sm text-brand-slate">
-            The photo is priced against the same product, or the closest similar one. Confirm the
-            cost before it joins the inventory in BLACKBOX.
+            Name the item before the search. Room, type, brand, model, and age make the same
+            product easier to find, and faster. Confirm the cost before it joins the inventory
+            in BLACKBOX.
           </p>
         </div>
 
@@ -121,13 +135,31 @@ export function ContentsCapture({
           <form onSubmit={findReplacement} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="contents-room">Room or area</Label>
-              <Input id="contents-room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="Living room" required />
+              <Input id="contents-room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="Bedroom" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contents-type">What is it</Label>
+              <Input id="contents-type" value={itemType} onChange={(e) => setItemType(e.target.value)} placeholder="Rain boots" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="contents-brand">Brand</Label>
+                <Input id="contents-brand" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Hunter" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contents-model">Model</Label>
+                <Input id="contents-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Original Tall" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contents-age">Age</Label>
+              <Input id="contents-age" value={age} onChange={(e) => setAge(e.target.value)} placeholder="About 2 years" />
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={busy || room.trim().length < 2}>
+              <Button type="submit" disabled={busy || room.trim().length < 2 || itemType.trim().length < 2}>
                 {busy ? "Searching…" : "Find replacement"}
               </Button>
             </div>

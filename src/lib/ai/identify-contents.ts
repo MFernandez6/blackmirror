@@ -6,7 +6,7 @@ const RETIRED = new Set([
   "claude-sonnet-4-0",
   "claude-opus-4-20250514",
 ]);
-const MAX_SEARCHES = 2;
+const MAX_SEARCHES = 1;
 
 export type ContentsMatchKind = "SAME" | "SIMILAR" | "UNIDENTIFIED";
 
@@ -27,9 +27,9 @@ export type ContentsIdentification = {
 const SYSTEM = `You itemize Coverage C personal property for a Florida public adjuster.
 A licensed adjuster confirms every line. You do not decide coverage, causation, or the amount the carrier owes.
 
-Look at the photograph. Identify the household item. Then use web search to find the same product, or the closest similar replacement still sold in the United States. Prefer the manufacturer's page, a major retailer, or a current listing that shows a price.
+The adjuster already named the item. Treat those notes as the search target. Use one web search for the same product, or the closest similar replacement still sold in the United States. Prefer the manufacturer's page, a major retailer, or a current listing that shows a price. If a brand or model is given, search that first. If the age suggests the model is discontinued, search the current equivalent of that brand and type. Do not run a second search.
 
-Search queries may name the product, brand, and model only. Never include a person's name, a street address, a claim number, or a policy number.
+Search queries may name the product, brand, and model only. Never include a person's name, a street address, a claim number, or a policy number. The room is context only and must not appear in the search.
 
 Reply with ONLY JSON:
 {
@@ -122,6 +122,22 @@ function parseJson(text: string): unknown {
   return JSON.parse(start >= 0 && end > start ? raw.slice(start, end + 1) : raw);
 }
 
+export type ContentsHints = {
+  room: string;
+  itemType: string;
+  brand: string | null;
+  modelNumber: string | null;
+  age: string | null;
+};
+
+export function contentsHintText(hints: ContentsHints) {
+  const lines = [`Room or area: ${hints.room}`, `Item: ${hints.itemType}`];
+  if (hints.brand) lines.push(`Brand: ${hints.brand}`);
+  if (hints.modelNumber) lines.push(`Model: ${hints.modelNumber}`);
+  if (hints.age) lines.push(`Approximate age: ${hints.age}`);
+  return `${lines.join("\n")}\nFind one current replacement listing for this item. JSON only.`;
+}
+
 function mediaType(mime: string): "image/jpeg" | "image/png" | "image/webp" | "image/gif" {
   if (mime.includes("png")) return "image/png";
   if (mime.includes("webp")) return "image/webp";
@@ -132,7 +148,7 @@ function mediaType(mime: string): "image/jpeg" | "image/png" | "image/webp" | "i
 async function ask(opts: {
   bytes: Buffer;
   mimeType: string;
-  room: string;
+  hints: ContentsHints;
   search: boolean;
 }): Promise<ContentsIdentification> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
@@ -168,16 +184,16 @@ async function ask(opts: {
         },
         {
           type: "text",
-          text: `Room or area: ${opts.room}. Identify this contents item and find a current replacement listing. JSON only.`,
+          text: contentsHintText(opts.hints),
         },
       ],
     },
   ];
   let message: Anthropic.Message | null = null;
-  for (let turn = 0; turn < 3; turn++) {
+  for (let turn = 0; turn < 2; turn++) {
     message = await client.messages.create({
       model,
-      max_tokens: 1200,
+      max_tokens: 700,
       system: SYSTEM,
       ...(tools.length ? { tools } : {}),
       messages,
@@ -198,7 +214,7 @@ export function contentsAiAvailable(): boolean {
 export async function identifyContentsItem(opts: {
   bytes: Buffer;
   mimeType: string;
-  room: string;
+  hints: ContentsHints;
 }): Promise<ContentsIdentification> {
   try {
     return await ask({ ...opts, search: true });

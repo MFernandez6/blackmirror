@@ -132,6 +132,30 @@ export async function blobToJpeg(
   return blobToJpeg(canvas, quality);
 }
 
+/** Contents search uses a smaller JPEG so the product lookup finishes on a phone connection. */
+export async function contentsSearchImage(blob: Blob): Promise<Blob> {
+  const maxEdge = 1024;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const longEdge = Math.max(bitmap.width, bitmap.height);
+    const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return blob;
+    }
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const small = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.72));
+    return small ?? blob;
+  } catch {
+    return blob;
+  }
+}
+
 /** Analysis uses the same long-edge cap as the stored JPEG. */
 
 export async function analysisImage(blob: Blob): Promise<Blob> {
