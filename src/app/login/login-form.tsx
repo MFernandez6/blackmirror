@@ -10,7 +10,9 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { BlackmirrorMark } from "@/components/brand/blackmirror-mark";
 import { BlacklineLogo } from "@/components/brand/blackline-mark";
 
-const BLACKBOX_ACCOUNT_URL = `${(process.env.NEXT_PUBLIC_BLACKBOX_URL || "").replace(/\/$/, "")}/account`;
+const BLACKBOX_ORIGIN = (process.env.NEXT_PUBLIC_BLACKBOX_URL || "https://box.blacklinepublicadjusters.com").replace(/\/$/, "");
+const BLACKBOX_ACCOUNT_URL = `${BLACKBOX_ORIGIN}/account`;
+const PASSWORD_RESET_URL = `${BLACKBOX_ORIGIN}/forgot-password`;
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   INVALID_CREDENTIALS: "Credentials rejected. Access denied.",
@@ -145,6 +147,11 @@ export default function LoginForm() {
           >
             {busy ? "Authenticating…" : "Enter BLACKMIRROR™"}
           </Button>
+          <p className="text-center text-sm">
+            <a href={PASSWORD_RESET_URL} className="text-brand-gold underline underline-offset-4">
+              Forgot password?
+            </a>
+          </p>
         </form>
         <p className="mt-8 text-center font-sans text-[10px] font-bold uppercase tracking-[0.2em] text-brand-slate">
           Sign in while you have signal · session lasts 8h
