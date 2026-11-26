@@ -6,7 +6,6 @@ const RETIRED = new Set([
   "claude-sonnet-4-0",
   "claude-opus-4-20250514",
 ]);
-const MAX_SEARCHES = 1;
 
 export type ContentsMatchKind = "SAME" | "SIMILAR" | "UNIDENTIFIED";
 
@@ -24,13 +23,8 @@ export type ContentsIdentification = {
   priceNote: string;
 };
 
-const SYSTEM = `You itemize Coverage C personal property for a Florida public adjuster.
-A licensed adjuster confirms every line. You do not decide coverage, causation, or the amount the carrier owes.
-
-The adjuster already named the item. Treat those notes as the search target. Use one web search for the same product, or the closest similar replacement still sold in the United States. Prefer the manufacturer's page, a major retailer, or a current listing that shows a price. If a brand or model is given, search that first. If the age suggests the model is discontinued, search the current equivalent of that brand and type. Do not run a second search.
-
-Search queries may name the product, brand, and model only. Never include a person's name, a street address, a claim number, or a policy number. The room is context only and must not appear in the search.
-
+const SEE = `You identify one household contents item for a Florida public adjuster.
+The adjuster already named it. Use that name. Do not decide coverage, causation, or a price.
 Reply with ONLY JSON:
 {
   "itemName": string,
@@ -38,21 +32,37 @@ Reply with ONLY JSON:
   "modelNumber": string | null,
   "description": string,
   "condition": "NEW" | "GOOD" | "FAIR" | "POOR" | "DESTROYED",
-  "quantity": number,
+  "quantity": number
+}
+Rules:
+- itemName is the adjuster's item type unless the photo clearly shows a different object.
+- brand and modelNumber come from the photo or the adjuster's notes. Use null when neither shows them.
+- description is what is visible: type, color, material, and obvious damage. Two sentences at most.
+- quantity is how many are clearly visible. Use 1 when the count is unclear.`;
+
+function findPrompt() {
+  const today = new Date().toISOString().slice(0, 10);
+  return `You find one current United States retail listing for a household item.
+The current date is ${today}. Prices change, so use one web search before you answer.
+Search the brand and model first. If the age suggests that model is discontinued, search the current equivalent of that brand and type. Do not run a second search.
+The search query may name the product, brand, and model only. Never include a person's name, a street address, a claim number, a policy number, or a room.
+Reply with ONLY JSON:
+{
+  "itemName": string,
+  "brand": string | null,
+  "modelNumber": string | null,
   "matchKind": "SAME" | "SIMILAR" | "UNIDENTIFIED",
   "productTitle": string | null,
   "productUrl": string | null,
   "listedPrice": number | null,
   "priceNote": string
 }
-
 Rules:
-- SAME only when the listing is the same brand and model visible in the photo. SIMILAR when it is the same kind of product but not that exact model. UNIDENTIFIED when the photo does not show what the object is.
-- listedPrice is the current USD price printed on a page you opened. If no price was printed, listedPrice is null. Never invent a price.
-- productUrl is a page from your search. If you did not open a page, productUrl is null.
-- quantity is how many of that item are clearly visible. Use 1 when the count is unclear.
-- description is what is visible: type, color, material, and obvious damage. Two sentences at most.
+- SAME only when the listing is the same brand and model. SIMILAR when it is the same kind of product. UNIDENTIFIED when you did not open a page.
+- listedPrice is a USD price printed on a page you opened. If no price was printed, listedPrice is null. Never invent a price.
+- productUrl is an https page from the search. If you did not open a page, productUrl is null.
 - priceNote says whether the figure is a listed price for the same item, a listed price for a similar item, or that no current price was found.`;
+}
 
 function clip(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
@@ -101,7 +111,7 @@ export function coerceContentsIdentification(raw: unknown): ContentsIdentificati
 }
 
 function modelName() {
-  const raw = (process.env.ANTHROPIC_CONTENTS_MODEL || process.env.ANTHROPIC_PHOTO_MODEL || "").trim();
+  const raw = (process.env.ANTHROPIC_CONTENTS_MODEL || "").trim();
   if (!raw || RETIRED.has(raw) || raw === "[SENSITIVE]") return DEFAULT_MODEL;
   return raw;
 }
@@ -131,11 +141,27 @@ export type ContentsHints = {
 };
 
 export function contentsHintText(hints: ContentsHints) {
-  const lines = [`Room or area: ${hints.room}`, `Item: ${hints.itemType}`];
+  const lines = [`Item: ${hints.itemType}`];
   if (hints.brand) lines.push(`Brand: ${hints.brand}`);
   if (hints.modelNumber) lines.push(`Model: ${hints.modelNumber}`);
   if (hints.age) lines.push(`Approximate age: ${hints.age}`);
   return `${lines.join("\n")}\nFind one current replacement listing for this item. JSON only.`;
+}
+
+function blankItem(hints: ContentsHints): ContentsIdentification {
+  return {
+    itemName: hints.itemType,
+    brand: hints.brand,
+    modelNumber: hints.modelNumber,
+    description: "",
+    condition: "GOOD",
+    quantity: 1,
+    matchKind: "UNIDENTIFIED",
+    productTitle: null,
+    productUrl: null,
+    listedPrice: null,
+    priceNote: "No current price was found.",
+  };
 }
 
 function mediaType(mime: string): "image/jpeg" | "image/png" | "image/webp" | "image/gif" {
@@ -145,66 +171,101 @@ function mediaType(mime: string): "image/jpeg" | "image/png" | "image/webp" | "i
   return "image/jpeg";
 }
 
-async function ask(opts: {
-  bytes: Buffer;
-  mimeType: string;
-  hints: ContentsHints;
-  search: boolean;
-}): Promise<ContentsIdentification> {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not configured.");
-  const client = new Anthropic({ apiKey: key });
-  const model = modelName();
-  const tools: Anthropic.ToolUnion[] = opts.search
-    ? [
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-          max_uses: MAX_SEARCHES,
-          user_location: {
-            type: "approximate",
-            country: "US",
-            region: "Florida",
-            timezone: "America/New_York",
-          },
-        },
-      ]
-    : [];
-  const messages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: mediaType(opts.mimeType),
-            data: opts.bytes.toString("base64"),
-          },
-        },
-        {
-          type: "text",
-          text: contentsHintText(opts.hints),
-        },
-      ],
-    },
-  ];
+const SEARCH_TOOL: Anthropic.ToolUnion = {
+  type: "web_search_20250305",
+  name: "web_search",
+  max_uses: 1,
+  allowed_callers: ["direct"],
+  user_location: {
+    type: "approximate",
+    country: "US",
+    region: "Florida",
+    timezone: "America/New_York",
+  },
+};
+
+function explainContentsError(err: unknown): Error | null {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/invalid x-api-key|authentication_error|\b401\b/.test(message)) {
+    return new Error("Contents pricing rejected the API key.");
+  }
+  if (/credit balance|purchase credits|plans & billing/i.test(message)) {
+    return new Error("Contents pricing has no remaining API credits.");
+  }
+  return null;
+}
+
+function readJson(message: Anthropic.Message): ContentsIdentification | null {
+  try {
+    return coerceContentsIdentification(parseJson(messageText(message)));
+  } catch {
+    return null;
+  }
+}
+
+function listingFromSearch(message: Anthropic.Message): { title: string; url: string } | null {
+  for (const block of message.content) {
+    if (block.type !== "web_search_tool_result" || !Array.isArray(block.content)) continue;
+    for (const hit of block.content) {
+      if (hit.type !== "web_search_result" || !hit.url.startsWith("https://")) continue;
+      return { title: hit.title.slice(0, 200) || "Current listing", url: hit.url.slice(0, 500) };
+    }
+  }
+  return null;
+}
+
+async function complete(opts: {
+  client: Anthropic;
+  model: string;
+  system: string;
+  messages: Anthropic.MessageParam[];
+  tools?: Anthropic.ToolUnion[];
+  maxTokens: number;
+}) {
   let message: Anthropic.Message | null = null;
-  for (let turn = 0; turn < 2; turn++) {
-    message = await client.messages.create({
-      model,
-      max_tokens: 700,
-      system: SYSTEM,
-      ...(tools.length ? { tools } : {}),
-      messages,
-    });
+  for (let turn = 0; turn < 4; turn++) {
+    message = await opts.client.messages.create(
+      {
+        model: opts.model,
+        max_tokens: opts.maxTokens,
+        system: opts.system,
+        ...(opts.tools?.length ? { tools: opts.tools } : {}),
+        messages: opts.messages,
+      },
+      { timeout: 25_000 }
+    );
     if (message.stop_reason !== "pause_turn") break;
-    messages.push({ role: "assistant", content: message.content });
+    opts.messages.push({ role: "assistant", content: message.content });
   }
   if (!message) throw new Error("Contents pricing returned no response.");
-  const parsed = coerceContentsIdentification(parseJson(messageText(message)));
-  if (!parsed) throw new Error("Contents pricing returned an unreadable item.");
-  return parsed;
+  return message;
+}
+
+function applyListing(
+  seen: ContentsIdentification,
+  priced: ContentsIdentification | null,
+  hit: { title: string; url: string } | null
+): ContentsIdentification {
+  const productUrl = priced?.productUrl || hit?.url || null;
+  const productTitle = priced?.productTitle || hit?.title || null;
+  const listedPrice = productUrl ? priced?.listedPrice ?? null : null;
+  let matchKind = priced?.matchKind ?? seen.matchKind;
+  if (!productUrl) matchKind = "UNIDENTIFIED";
+  else if (matchKind === "UNIDENTIFIED") matchKind = "SIMILAR";
+  return {
+    ...seen,
+    brand: priced?.brand || seen.brand,
+    modelNumber: priced?.modelNumber || seen.modelNumber,
+    matchKind,
+    productTitle,
+    productUrl,
+    listedPrice,
+    priceNote:
+      priced?.priceNote ||
+      (productUrl
+        ? "A current listing was found. Confirm the price before using it."
+        : "No current price was found."),
+  };
 }
 
 export function contentsAiAvailable(): boolean {
@@ -216,11 +277,72 @@ export async function identifyContentsItem(opts: {
   mimeType: string;
   hints: ContentsHints;
 }): Promise<ContentsIdentification> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) throw new Error("Contents pricing rejected the API key.");
+  const client = new Anthropic({ apiKey: key });
+  const model = modelName();
+  let seen = blankItem(opts.hints);
   try {
-    return await ask({ ...opts, search: true });
+    const looked = await complete({
+      client,
+      model,
+      system: SEE,
+      maxTokens: 800,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType(opts.mimeType),
+                data: opts.bytes.toString("base64"),
+              },
+            },
+            {
+              type: "text",
+              text: `Room or area: ${opts.hints.room}\nItem: ${opts.hints.itemType}${opts.hints.brand ? `\nBrand: ${opts.hints.brand}` : ""}${opts.hints.modelNumber ? `\nModel: ${opts.hints.modelNumber}` : ""}${opts.hints.age ? `\nApproximate age: ${opts.hints.age}` : ""}\nDescribe the item. JSON only.`,
+            },
+          ],
+        },
+      ],
+    });
+    const parsed = readJson(looked);
+    if (parsed) {
+      seen = {
+        ...parsed,
+        itemName: parsed.itemName || opts.hints.itemType,
+        brand: parsed.brand || opts.hints.brand,
+        modelNumber: parsed.modelNumber || opts.hints.modelNumber,
+        productTitle: null,
+        productUrl: null,
+        listedPrice: null,
+        matchKind: "UNIDENTIFIED",
+        priceNote: "No current price was found.",
+      };
+    }
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    if (/web_search|tool/i.test(detail)) return ask({ ...opts, search: false });
-    throw new Error(`Contents pricing failed: ${detail}`);
+    const explained = explainContentsError(err);
+    if (explained) throw explained;
+  }
+
+  try {
+    const found = await complete({
+      client,
+      model,
+      system: findPrompt(),
+      tools: [SEARCH_TOOL],
+      maxTokens: 4096,
+      messages: [{ role: "user", content: contentsHintText(opts.hints) }],
+    });
+    return applyListing(seen, readJson(found), listingFromSearch(found));
+  } catch (err) {
+    const explained = explainContentsError(err);
+    if (explained) throw explained;
+    return {
+      ...seen,
+      priceNote: "No current listing was found. Enter the unit cost.",
+    };
   }
 }

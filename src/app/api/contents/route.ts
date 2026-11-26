@@ -64,6 +64,10 @@ export async function POST(req: Request) {
     identified = await identifyContentsItem({ bytes, mimeType: detected.mime, hints });
   } catch (err) {
     console.error("[contents] identify failed", err);
+    const message = err instanceof Error ? err.message : "";
+    if (message === "Contents pricing rejected the API key." || message === "Contents pricing has no remaining API credits.") {
+      return NextResponse.json({ error: message }, { status: 503 });
+    }
     return NextResponse.json({ error: "The product search did not finish. Keep the photo and try again." }, { status: 502 });
   }
 
